@@ -23,7 +23,7 @@ Build that rootkit!
 
 **DEEPER EXPLANATION**
 
-**Feature 1 - Hide from PsLoadedModuleList**: The way it essentially hides from the list, is placing it so when the list is called, essentially it moves the pointer from itself to skip over it, by Flinking and Blinking (so when it gets to the module, it redirects the pointer behind to go 1 forwards from it, essentially skipping over itself)
+**Feature 1 - Hide from PsLoadedModuleList**: The way it essentially hides from the list, is placing it so when the list is called, essentially it moves the pointer from itself to skip over it, by Flinking and Blinking (so when it gets to the module, it redirects the pointer behind to go 2 times forwards from it, essentially skipping over itself)
 
 **Feature 2 - Elevate a process using it's PID to NT AUTHORITY \ SYSTEM **- Essentially, the User Mode dispatcher (program), communicates with the driver using IOCTL codes (read in msdn), transferring the PID of the process it wants to elevate. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code, where it does the following: Call a function ElevateProcess that gets the PID, then gets the EPROCESS Structure of the PID's process, and also the EPROCESS structure of the process with PID 4, which is the SYSTEM process, the one with the highest privileges on the system, then it goes to the offest of 0x4b8, which is the Token offset (This was changed after 22H2 versions of windows 10 and 11, full list of versions will be below), and basically **copies the token from the SYSTEM one to the process with the PID we gave** (The Token is how Windows knows which privileges the process has).
 
