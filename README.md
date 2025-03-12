@@ -29,19 +29,19 @@ Build that rootkit!
 
 List of token offsets:
 
-*x64 offsets* 	         *x86 offsets*
-0x0160 (late 5.2) 	   0x0150 (3.10)
-0x0168 (6.0) 	         0x0108 (3.50 to 4.0)
-0x0208 (6.1) 	         0x012C (5.0)
-0x0348 (6.2 to 6.3) 	 0xC8 (5.1 to early 5.2)
-0x0358 (10.0 to 1809)  0xD8 (late 5.2)
-0x0360 (1903)          0xE0 (6.0)
-0x04B8 	               0xF8 (6.1)
-	                     0xEC (6.2 to 6.3)
-	                     0xF4 (10.0 to 1607)
-	                     0xFC (1703 to 1903)
-	                     0x012C
 
+  | *x64 offsets*    | *x86 offsets*        |
+  | --------------| ------------------ |
+  | 0x0160 (late 5.2) | 0x0150 (3.10)      |
+  | 0x0168 (6.0)  | 0x0108 (3.50 to 4.0) |
+  | 0x0208 (6.1)  | 0x012C (5.0)        |
+  | 0x0348 (6.2 to 6.3) | 0xC8 (5.1 to early 5.2) |
+  | 0x0358 (10.0 to 1809) | 0xD8 (late 5.2) |
+  | 0x0360 (1903) | 0xE0 (6.0)          |
+  | 0x04B8        | 0xF8 (6.1)          |
+  |               | 0xEC (6.2 to 6.3)   |
+  |               | 0xF4 (10.0 to 1607) |
+  |               | 0xFC (1703 to 1903) |
+  |               | 0x012C              |
 
-NEXT FEATURE: Process Hiding. (Transfer a PID to hide from the process list, entirely) (Will be worked on tomorrow, the 13/03/2025, read DD/MM/YY)
- N
+*NEXT FEATURE: Process Hiding. (Transfer a PID to hide from the process list, entirely) (Will be worked on tomorrow, the 13/03/2025, read DD/MM/YY)*
