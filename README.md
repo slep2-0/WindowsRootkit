@@ -1,6 +1,6 @@
 # Windows Rootkit - By slep2.0
 
-# NOTE: THIS WILL NOT WORK IN WINDOWS 11 VERSION 24H2 AND ABOVE, AS MICROSOFT CHANGED PROCESS STRUCTURE, AND SO OFFSETS HAVE CHANGED, PLAYING THIS ON WINDOWS 11 24H2 WILL CAUSE A BSOD OF PAGEFAULT_IN_NONPAGED_AREA
+# EDIT: Implementing a for loop to check for the build number, and use token offsets by that number.
 
 **sorry for screaming at yall :)**
 
