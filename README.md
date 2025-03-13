@@ -1,6 +1,6 @@
 # Windows Rootkit - By slep2.0
 
-# EDIT: Implementing a for loop to check for the build number, and use token offsets by that number.
+# EDIT: Rootkit now works on windows 7/10/11. (on popular builds, that is)
 
 **sorry for screaming at yall :)**
 
