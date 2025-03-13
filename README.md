@@ -2,7 +2,6 @@
 
 # EDIT: Rootkit now works on windows 7/10/11.
 
-**sorry for screaming at yall :)**
 
 This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 3 features (as it is day 2 of coding it).
 
