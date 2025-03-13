@@ -1,5 +1,9 @@
 # Windows Rootkit - By slep2.0
 
+# NOTE: THIS WILL NOT WORK IN WINDOWS 11 VERSION 24H2 AND ABOVE, AS MICROSOFT CHANGED PROCESS STRUCTURE, AND SO OFFSETS HAVE CHANGED, PLAYING THIS ON WINDOWS 11 24H2 WILL CAUSE A BSOD OF PAGEFAULT_IN_NONPAGED_AREA
+
+**sorry for screaming at yall :)**
+
 This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 2 features (as it is day 1 of coding it).
 
 **REQUIRES WINDOWS DRIVER KIT TO BUILD**
@@ -23,9 +27,9 @@ Build that rootkit!
 
 **DEEPER EXPLANATION**
 
-**Feature 1 - Hide from PsLoadedModuleList**: The way it essentially hides from the list, is placing it so when the list is called, essentially it moves the pointer from itself to skip over it, by Flinking and Blinking (so when it gets to the module, it redirects the pointer behind to go 2 times forwards from it, essentially skipping over itself)
+**Feature 1 - Hide from PsLoadedModuleList**: The way it essentially hides from the list, is placing it so when the list is called, essentially it moves the pointer from itself to skip over it, by Flinking and Blinking (so when it gets to the module, it redirects the pointer behind it to go 2 forwards, and the pointer forwards from it to point to the pointer 2 backwards from it, essentially skipping over itself)
 
-**Feature 2 - Elevate a process using it's PID to NT AUTHORITY \ SYSTEM **- Essentially, the User Mode dispatcher (program), communicates with the driver using IOCTL codes (read in msdn), transferring the PID of the process it wants to elevate. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code, where it does the following: Call a function ElevateProcess that gets the PID, then gets the EPROCESS Structure of the PID's process, and also the EPROCESS structure of the process with PID 4, which is the SYSTEM process, the one with the highest privileges on the system, then it goes to the offest of 0x4b8, which is the Token offset (This was changed after 22H2 versions of windows 10 and 11, full list of versions will be below), and basically **copies the token from the SYSTEM one to the process with the PID we gave** (The Token is how Windows knows which privileges the process has).
+**Feature 2 - Elevate a process using it's PID to NT AUTHORITY \ SYSTEM** - Essentially, the User Mode dispatcher (program), communicates with the driver using IOCTL codes (read in msdn), transferring the PID of the process it wants to elevate. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code, where it does the following: Call a function ElevateProcess that gets the PID, then gets the EPROCESS Structure of the PID's process, and also the EPROCESS structure of the process with PID 4, which is the SYSTEM process, the one with the highest privileges on the system, then it goes to the offest of 0x4b8, which is the Token offset (This was changed after 22H2 versions of windows 10 and 11, full list of versions will be below), and basically **copies the token from the SYSTEM one to the process with the PID we gave** (The Token is how Windows knows which privileges the process has).
 
 List of token offsets:
 
@@ -44,4 +48,4 @@ List of token offsets:
   |               | 0xFC (1703 to 1903) |
   |               | 0x012C              |
 
-*NEXT FEATURE: Process Hiding. (Transfer a PID to hide from the process list, entirely) (Will be worked on tomorrow, the 13/03/2025, read DD/MM/YY)*
+**Feature 3 - Process Hiding** - **Hide a process using his PID, COMPLETE HIDE**: Essentially, the User Mode dispatcher, communicates with the driver IOCTL codes (read in msdn), transferring the PID of the process it wants to hide. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code (namespace), where it does the following: Call a function HideProcess that gets the PID, then gets the current EPROCESS structure, and starts to traverse using the known offset of 0x448 to view the PID of each link in the __EPROCESS structure of all of the processes, essentially doing a while loop that will circle around all of the processes, checking each one for their PID, seeing if they match our process PID we transferred, then flinking and blinking it to essentially hiding it from the list. (so when it gets to the module, it redirects the pointer behind it to go 2 forwards, and the pointer forwards from it to point to the pointer 2 backwards from it, essentially skipping over itself)
