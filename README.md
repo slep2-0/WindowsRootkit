@@ -8,6 +8,7 @@ This is my most advanced project to date, this is a Kernel-Mode Rootkit, current
 
 **REQUIRES WINDOWS DRIVER KIT TO BUILD**
 
+**The features of this project are well documented in comments I have written inside of main.cpp**
 Features:
 
 1. Hide from the PsLoadedModuleList (basically the list of all loaded drivers in system)
