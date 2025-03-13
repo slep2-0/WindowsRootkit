@@ -52,4 +52,8 @@ List of token offsets:
   |               | 0xFC (1703 to 1903) |
   |               | 0x012C              |
 
+
 **Feature 3 - Process Hiding** - **Hide a process using his PID, COMPLETE HIDE**: Essentially, the User Mode dispatcher, communicates with the driver IOCTL codes (read in msdn), transferring the PID of the process it wants to hide. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code (namespace), where it does the following: Call a function HideProcess that gets the PID, then gets the current EPROCESS structure, and starts to traverse using the known offset of 0x448 to view the PID of each link in the __EPROCESS structure of all of the processes, essentially doing a while loop that will circle around all of the processes, checking each one for their PID, seeing if they match our process PID we transferred, then flinking and blinking it to essentially hiding it from the list. (so when it gets to the module, it redirects the pointer behind it to go 2 forwards, and the pointer forwards from it to point to the pointer 2 backwards from it, essentially skipping over itself)
+
+
+**NEXT FEATURE: Port Hiding**
