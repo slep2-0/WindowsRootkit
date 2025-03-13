@@ -1,6 +1,6 @@
 # Windows Rootkit - By slep2.0
 
-# EDIT: Rootkit now works on windows 7/10/11. (on popular builds, that is)
+# EDIT: Rootkit now works on windows 7/10/11.
 
 **sorry for screaming at yall :)**
 
