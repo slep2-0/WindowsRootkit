@@ -17,6 +17,8 @@ Features:
 
 3. Hide processes from system entirely (they are still working, just hidden, like they are not there, poof!)
 
+4. Protect a process, making it so when process terminates, system crashes. (Essentially, becoming a part of the system itself.)
+
 This requires a User-Mode program to interact with the Kernel Mode driver, using IOCTL codes. It is in the folder RootkitClient, build it.
 
 Steps to build:
@@ -54,5 +56,6 @@ List of token offsets:
 
 **Feature 3 - Process Hiding** - **Hide a process using his PID, COMPLETE HIDE**: Essentially, the User Mode dispatcher, communicates with the driver IOCTL codes (read in msdn), transferring the PID of the process it wants to hide. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code (namespace), where it does the following: Call a function HideProcess that gets the PID, then gets the current EPROCESS structure, and starts to traverse using the known offset of 0x448 to view the PID of each link in the __EPROCESS structure of all of the processes, essentially doing a while loop that will circle around all of the processes, checking each one for their PID, seeing if they match our process PID we transferred, then flinking and blinking it to essentially hiding it from the list. (so when it gets to the module, it redirects the pointer behind it to go 2 forwards, and the pointer forwards from it to point to the pointer 2 backwards from it, essentially skipping over itself)
 
+**Feature 4 - Process Protection** - **Protect a process using his PID, termination = crash**: It's 1AM, I'm tired, here is the gist of it: You set the token of the process to be equivalent of a system SE token, basically says that the process is a critical part of the system, and termination will cause a blue screen of death.
 
 **NEXT FEATURE: Port Hiding**
