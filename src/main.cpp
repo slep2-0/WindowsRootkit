@@ -17,8 +17,8 @@ VOID FlinkBlinkHide(PLIST_ENTRY Current) {
     PLIST_ENTRY Prev, Next;
 
     // Get the previous and next list entries from the current entry
-    Prev = (Current->Blink);
-    Next = (Current->Flink);
+    Prev = (Current->Blink); // The previous is a backwards link
+    Next = (Current->Flink); // The next one is a forwards link.
 
     // Unlink the current entry from the list:
     // 1. Set the previous entry's Flink (forward link) to the point of the next entry
