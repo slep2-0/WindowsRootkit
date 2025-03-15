@@ -3,7 +3,7 @@
 # EDIT: Rootkit now works on windows 7/10/11.
 
 
-This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 3 features (as it is day 2 of coding it).
+This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 4 features. (It's day 4/5 of coding it, i'm already miserable lol)
 
 **REQUIRES WINDOWS DRIVER KIT TO BUILD**
 
