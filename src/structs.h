@@ -30,3 +30,4 @@ typedef struct _LDR_DATA_TABLE_ENTRY {
 
 // Add IRQL checking macros
 #define IS_VALID_IRQL(irql) (KeGetCurrentIrql() <= (irql))
+

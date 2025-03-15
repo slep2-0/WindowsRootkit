@@ -1,4 +1,4 @@
-#include "structs.h"
+#include "structs.h" 
 // All of these, arent in used right now (except IoCreateDriver, since we are using KDMapper), they *will* be in use in further updates, tomorrow, or after tmr, this is hard yk :)
 extern "C" {
     NTKERNELAPI NTSTATUS IoCreateDriver(PUNICODE_STRING DriverName,
