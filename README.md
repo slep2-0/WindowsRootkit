@@ -1,3 +1,5 @@
+# TESTING BRANCH, FEATURES HERE DO NOT WORK, ARE IN IMPLEMENTATION.
+
 # Windows Rootkit - By slep2.0
 
 # EDIT: Rootkit now works on windows 7/10/11.
