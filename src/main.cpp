@@ -35,6 +35,10 @@ ULONG GetImageFileNameOffset() {
             ACTIVE_PROCESS_LINKS_OFFSET = 0x188;
             IMAGE_FILE_NAME_OFFSET = 0x2e0;
             break;
+        case 3790: // Windows XP Latest builds (SP2) (Includes Windows Server 2003)
+            TOKEN_OFFSET = 0x160;
+            ACTIVE_PROCESS_LINKS_OFFSET = 0xe0;
+            IMAGE_FILE_NAME_OFFSET = 0x268;
         default: // Just use them default ones.
             TOKEN_OFFSET = 0x4b8;
             ACTIVE_PROCESS_LINKS_OFFSET = 0x448;
