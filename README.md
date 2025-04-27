@@ -2,6 +2,18 @@
 
 # EDIT: Rootkit now works on windows 7/10/11.
 
+# IMPORTANT NOTE, PLEASE READ:
+Sorry to not have mentioned this before, but as KPP Exists (Also known as PatchGuard - Kernel Patch Protection), using this Rootkit on a Windows x64 Machine (Vista and onward), will trigger the KPP to bluescreen the machine, 
+of course this will not be immediate (or it might be), since KPP does not check every second for the SSDT, DKOM, MSR's, GDT/IDT, and more but those are the main ones, this CAN give you enough time to do your own persistence stuff,
+But I would recommend either sticking to user mode programs, or to patch the KPP and the DSE (Driver Signature Enforcement), to use this rootkit effectively and achieve full control, always.
+
+I will not teach you how to patch the KPP and the DSE.
+
+Another note is that if you try to add this as a System Service (kernel service), this will quite make the machine unuseable, unless booting from a USB and deleting the .sys driver, as it has no official DriverEntry, since no registryPath is supplied, and no driver_object.
+Since we are using KDMapper to load this driver into the system's kernel at runtime, using an already vulnerable intel driver.
+
+This is it for the important note.
+
 
 This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 4 features. (It's day 4/5 of coding it, i'm already miserable lol)
 
