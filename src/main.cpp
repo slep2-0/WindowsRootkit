@@ -81,9 +81,7 @@ NTSTATUS ProtectProcess(UINT32 PID) {
     NTSTATUS status = STATUS_SUCCESS;
 
     CLIENT_ID clientId;
-    HANDLE hProcess, hToken;
-
-    TOKEN_PRIVILEGES tkp = { 0 };
+    HANDLE hProcess;
     OBJECT_ATTRIBUTES objAttr;
     ULONG BreakOnTermination = 1;
 
@@ -93,48 +91,17 @@ NTSTATUS ProtectProcess(UINT32 PID) {
 
     status = ZwOpenProcess(&hProcess, PROCESS_ALL_ACCESS, &objAttr, &clientId);
     if (status == STATUS_UNSUCCESSFUL) {
-        // crap
+        // Failure here means we will not open to modify the information of the process.
         debug_print("[-] Failed to open process to use on ProtectProcess, returning.\n");
         return status;
     }
-    status = ZwOpenProcessTokenEx(hProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, OBJ_KERNEL_HANDLE, &hToken);
-    if (status == STATUS_UNSUCCESSFUL) {
-        // ugh
-        debug_print("[-] Failed to open process token to use on ProtectProcess, returning.\n");
-        ZwClose(hToken);
-        return status;
-    }
-
-    tkp.PrivilegeCount = 1;
-    tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED; // Set as critical
-    tkp.Privileges[0].Luid = RtlConvertLongToLuid(SE_DEBUG_PRIVILEGE);  // Set as critical
-
-    status = ZwAdjustPrivilegesToken(hToken, FALSE, &tkp, 0, NULL, NULL);
-    if (status == STATUS_UNSUCCESSFUL) {
-        // smhhhhh
-        debug_print("[-] Failed to adjust token privs to use on ProtectProcess, returning.\n");
-        ZwClose(hToken);
-        return status;
-    }
     status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
     if (status == STATUS_UNSUCCESSFUL) {
-        // dude
+        // Failure here means the process will not be marked as BreakOnTermination, which means it isn't protected.
         debug_print("[-] Failed to set process information to use on ProtectProcess, returning.\n");
-        ZwClose(hToken);
-        return status;
-    }
-    debug_print("[+] Process is now set as CRITICAL.\n");
-
-    tkp.Privileges[0].Luid = RtlConvertLongToLuid(SE_TCB_PRIVILEGE);
-    status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
-    if (status == STATUS_UNSUCCESSFUL) {
-        // on the verge of success, we fail.
-        debug_print("[-] Failed to set process information (second time) to use on ProtectProcess, returning.\n");
-        ZwClose(hToken);
         return status;
     }
     debug_print("[+] Process is now part of the SYSTEM, termination will result to blue screen, restart to revert.\n");
-    ZwClose(hToken);
     return status;
 }
 
