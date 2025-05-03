@@ -162,6 +162,7 @@ int main() {
             std::cin >> pidProtect;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::ProtectProcess(driver_handle, pidProtect);
+            break;
         case 99:
             std::cout << "Exiting the program, bye!\n";
             break;
