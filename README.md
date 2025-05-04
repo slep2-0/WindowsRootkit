@@ -1,6 +1,6 @@
 # Windows Rootkit - By slep2.0
 
-# EDIT: Rootkit now works on windows 7/10/11.
+# EDIT: Rootkit now works on windows XP/7/10/11.
 
 # IMPORTANT NOTE, PLEASE READ:
 Sorry to not have mentioned this before, but as KPP Exists (Also known as PatchGuard - Kernel Patch Protection), using this Rootkit on a Windows x64 Machine (Vista and onward), will trigger the KPP to bluescreen the machine, 
