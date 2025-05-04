@@ -9,8 +9,7 @@ But I would recommend either sticking to user mode programs, or to patch the KPP
 
 I will not teach you how to patch the KPP and the DSE.
 
-Another note is that if you try to add this as a System Service (kernel service), this will quite make the machine unuseable, unless booting from a USB and deleting the .sys driver, as it has no official DriverEntry, since no registryPath is supplied, and no driver_object.
-Since we are using KDMapper to load this driver into the system's kernel at runtime, using an already vulnerable intel driver.
+**PLEASE NOTE: That if you try to load this driver via service creation, IT WILL NOT WORK. Since the driver is only meant to be loaded reflectively with KDMapper.**
 
 This is it for the important note.
 
