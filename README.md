@@ -9,7 +9,7 @@ But I would recommend either sticking to user mode programs, or to patch the KPP
 
 I will not teach you how to patch the KPP and the DSE.
 
-**PLEASE NOTE: That if you try to load this driver via service creation, IT WILL NOT WORK. Since the driver is only meant to be loaded reflectively with KDMapper.**
+**PLEASE NOTE: If you build the driver and not use the binaries, please check if you want the driver to be loaded reflectively by uncommenting the #define DRL. If you want it to load via service just build without uncommenting.**
 
 This is it for the important note.
 
