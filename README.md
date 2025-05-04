@@ -94,13 +94,13 @@ Removes the driver from the `PsLoadedModuleList` by patching the doubly linked l
 
 Replaces the token of a target process with the token of the `SYSTEM` process (PID 4), granting NT AUTHORITY\SYSTEM privileges.
 
-* **Token offset:** 0x4B8 (may vary across Windows versions).
+* **Token offset:** 0x4B8 (may vary across Windows versions - accounted for that in code).
 
 ### 3. Process Hiding
 
 Traverses the active process list and unlinks the target process from the `__EPROCESS` list, making it invisible to enumeration.
 
-* **EPROCESS list offset:** 0x448.
+* **EPROCESS list offset:** 0x448. (varies across Windows versions - accounted for that in code)
 
 ### 4. Process Protection
 
