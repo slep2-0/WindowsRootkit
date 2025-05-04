@@ -39,6 +39,7 @@ ULONG GetImageFileNameOffset() {
             TOKEN_OFFSET = 0x160;
             ACTIVE_PROCESS_LINKS_OFFSET = 0xe0;
             IMAGE_FILE_NAME_OFFSET = 0x268;
+            break;
         default: // Just use them default ones.
             TOKEN_OFFSET = 0x4b8;
             ACTIVE_PROCESS_LINKS_OFFSET = 0x448;
