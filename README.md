@@ -1,72 +1,128 @@
-# Windows Rootkit - By slep2.0
+# Windows Kernel-Mode Rootkit (slep2.0)
 
-# EDIT: Rootkit now works on windows XP/7/10/11.
+This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides four core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
 
-# IMPORTANT NOTE, PLEASE READ:
-Sorry to not have mentioned this before, but as KPP Exists (Also known as PatchGuard - Kernel Patch Protection), using this Rootkit on a Windows x64 Machine (Vista and onward), will trigger the KPP to bluescreen the machine, 
-of course this will not be immediate (or it might be), since KPP does not check every second for the SSDT, DKOM, MSR's, GDT/IDT, and more but those are the main ones, this CAN give you enough time to do your own persistence stuff,
-But I would recommend either sticking to user mode programs, or to patch the KPP and the DSE (Driver Signature Enforcement), to use this rootkit effectively and achieve full control, always.
+---
 
-I will not teach you how to patch the KPP and the DSE.
+## Table of Contents
 
-**PLEASE NOTE: If you build the driver and not use the binaries, please check if you want the driver to be loaded reflectively by uncommenting the #define DRL. If you want it to load via service just build without uncommenting.**
+1. [Prerequisites](#prerequisites)
+2. [Important Considerations](#important-considerations)
+3. [Build Instructions](#build-instructions)
+4. [Usage](#usage)
+5. [Feature Overview](#feature-overview)
 
-This is it for the important note.
+   * [1. Module Hiding](#1-module-hiding)
+   * [2. Privilege Elevation](#2-privilege-elevation)
+   * [3. Process Hiding](#3-process-hiding)
+   * [4. Process Protection](#4-process-protection)
+6. [Reflective vs. Service Loading](#reflective-vs-service-loading)
+7. [Future Enhancements](#future-enhancements)
 
+---
 
-This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 4 features.
+## Prerequisites
 
-**REQUIRES WINDOWS DRIVER KIT TO BUILD**
+* **Windows Driver Kit (WDK)**
+* **Visual Studio 2022**
+* **Administrator privileges** on the target system
+* **User-mode client application** (provided in `RootkitClient`)
 
-**The features of this project are well documented in comments I have written inside of main.cpp**
+---
 
-Features:
+## Important Considerations
 
-1. Hide from the PsLoadedModuleList (basically the list of all loaded drivers in system)
+* **Kernel Patch Protection (KPP / PatchGuard):**
 
-2. Elevate Process Privileges to nt authority \ system (highest privileges, using the SYSTEM token) (basically the SYSTEM process privileges)
+  * On 64-bit Windows Vista and later, PatchGuard may detect modifications to SSDT, DKOM, MSRs, GDT/IDT, etc., and trigger a bug check (blue screen).
+  * Detection timing is nondeterministic; you may have a window of opportunity to establish persistence before a crash occurs.
+  * For sustained stealth, you must patch PatchGuard and disable Driver Signature Enforcement (DSE). **This repository does *not* include KPP or DSE patches.**
 
-3. Hide processes from system entirely (they are still working, just hidden, like they are not there, poof!)
+---
 
-4. Protect a process, making it so when process terminates, system crashes. (Essentially, becoming a part of the system itself.)
+## Build Instructions
 
-This requires a User-Mode program to interact with the Kernel Mode driver, using IOCTL codes. It is in the folder RootkitClient, build it.
+1. **Install WDK & Visual Studio**
 
-Steps to build:
+   * Download and install the latest Windows Driver Kit from Microsoft.
+   * Install Visual Studio 2022 with C++ development tools.
 
-Install the Windows Driver Kit from the official microsoft website.
+2. **Open Solution**
 
-Open the .sln file (Solution) in Visual Studio 2022
+   * Launch Visual Studio and open `RootkitDriver.sln`.
 
-Build that rootkit!
+3. **Configure Driver-Loading Mode**
 
+   * By default, the driver loads via a service.
+   * To enable reflective loading (in-memory), uncomment `#define DRL` in `main.cpp`.
 
-**DEEPER EXPLANATION**
+4. **Build**
 
-**Feature 1 - Hide from PsLoadedModuleList**: The way it essentially hides from the list, is placing it so when the list is called, essentially it moves the pointer from itself to skip over it, by Flinking and Blinking (so when it gets to the module, it redirects the pointer behind it to go 2 forwards, and the pointer forwards from it to point to the pointer 2 backwards from it, essentially skipping over itself)
+   * Select the target architecture (x86 or x64) and build the solution.
+   * The driver binary (`.sys`) and client executable will be generated.
 
-**Feature 2 - Elevate a process using it's PID to NT AUTHORITY \ SYSTEM** - Essentially, the User Mode dispatcher (program), communicates with the driver using IOCTL codes (read in msdn), transferring the PID of the process it wants to elevate. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code, where it does the following: Call a function ElevateProcess that gets the PID, then gets the EPROCESS Structure of the PID's process, and also the EPROCESS structure of the process with PID 4, which is the SYSTEM process, the one with the highest privileges on the system, then it goes to the offest of 0x4b8, which is the Token offset (This was changed after 23H2 versions of windows 11, full list of versions will be below), and basically **copies the token from the SYSTEM one to the process with the PID we gave** (The Token is how Windows knows which privileges the process has).
+---
 
-List of token offsets:
+## Usage
 
+1. **Install & Start Driver**
 
-  | *x64 offsets*    | *x86 offsets*        |
-  | --------------| ------------------ |
-  | 0x0160 (late 5.2) | 0x0150 (3.10)      |
-  | 0x0168 (6.0)  | 0x0108 (3.50 to 4.0) |
-  | 0x0208 (6.1)  | 0x012C (5.0)        |
-  | 0x0348 (6.2 to 6.3) | 0xC8 (5.1 to early 5.2) |
-  | 0x0358 (10.0 to 1809) | 0xD8 (late 5.2) |
-  | 0x0360 (1903) | 0xE0 (6.0)          |
-  | 0x04B8        | 0xF8 (6.1)          |
-  |               | 0xEC (6.2 to 6.3)   |
-  |               | 0xF4 (10.0 to 1607) |
-  |               | 0xFC (1703 to 1903) |
-  |               | 0x012C              |
+   ```powershell
+   sc create RootkitDriver type= kernel binPath= "<path>\RootkitDriver.sys"
+   sc start RootkitDriver
+   ```
 
+2. **Run User-Mode Client**
 
-**Feature 3 - Process Hiding** - **Hide a process using his PID, COMPLETE HIDE**: Essentially, the User Mode dispatcher, communicates with the driver IOCTL codes (read in msdn), transferring the PID of the process it wants to hide. When the driver receives the PID, it initiates a control code, handles the case with the ID of the code (namespace), where it does the following: Call a function HideProcess that gets the PID, then gets the current EPROCESS structure, and starts to traverse using the known offset of 0x448 to view the PID of each link in the __EPROCESS structure of all of the processes, essentially doing a while loop that will circle around all of the processes, checking each one for their PID, seeing if they match our process PID we transferred, then flinking and blinking it to essentially hiding it from the list. (so when it gets to the module, it redirects the pointer behind it to go 2 forwards, and the pointer forwards from it to point to the pointer 2 backwards from it, essentially skipping over itself)
+   * Build the client in the `RootkitClient` folder.
+   * Use its command-line interface to send IOCTL codes and target process IDs:
 
-**Feature 4 - Process Protection** - **Protect a process using his PID, termination = crash**: *UPDATED* This sets the information of the process (inside of the EPROCESS list) on BreakOnTermination to 1, the kernel checks for every process termination for this flag, and if it is true (1), then the system blue screens with stop code: CRITICAL_PROCESS_DIED, meaning: When you protect a process and it exites (terminates), system crash..
+     ```cmd
+     RootkitClient.exe > Choose from The Menu.
+     ```
 
-**NEXT FEATURE: Port Hiding**
+---
+
+## Feature Overview
+
+### 1. Module Hiding
+
+Removes the driver from the `PsLoadedModuleList` by patching the doubly linked list pointers (FLINK/BLINK) to skip the driver entry.
+
+### 2. Privilege Elevation
+
+Replaces the token of a target process with the token of the `SYSTEM` process (PID 4), granting NT AUTHORITY\SYSTEM privileges.
+
+* **Token offset:** 0x4B8 (may vary across Windows versions).
+
+### 3. Process Hiding
+
+Traverses the active process list and unlinks the target process from the `__EPROCESS` list, making it invisible to enumeration.
+
+* **EPROCESS list offset:** 0x448.
+
+### 4. Process Protection
+
+Sets the `BreakOnTermination` flag in the target process’s `__EPROCESS` structure.
+
+* If the protected process exits or is terminated, the system will bug check with **CRITICAL\_PROCESS\_DIED**.
+
+---
+
+## Reflective vs. Service Loading
+
+* **Service Loading (default):** Loads driver via SCM (Service Control Manager).
+* **Reflective Loading:** Loads driver into memory without SCM.
+
+  * Enable by uncommenting `#define DRL` in `main.cpp`.
+
+---
+
+## Future Enhancements
+
+* **Port Hiding:** Conceal network ports in TCP/IP stack tables.
+* **Extended DKOM:** Modify additional kernel structures for enhanced stealth.
+
+---
+
+*Use this rootkit code responsibly. Always ensure you have explicit authorization before testing on any system.*
