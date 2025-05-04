@@ -14,7 +14,7 @@ I will not teach you how to patch the KPP and the DSE.
 This is it for the important note.
 
 
-This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 4 features. (It's day 4/5 of coding it, i'm already miserable lol)
+This is my most advanced project to date, this is a Kernel-Mode Rootkit, currently it has 4 features.
 
 **REQUIRES WINDOWS DRIVER KIT TO BUILD**
 
