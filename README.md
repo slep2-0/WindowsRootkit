@@ -12,7 +12,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
 4. [Usage](#usage)
 5. [Feature Overview](#feature-overview)
 
-   * [1. Module Hiding](#1-module-hiding)
+   * [1. Driver Hiding](#1-driver-hiding)
    * [2. Privilege Elevation](#2-privilege-elevation)
    * [3. Process Hiding](#3-process-hiding)
    * [4. Process Protection](#4-process-protection)
@@ -86,7 +86,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
 
 ## Feature Overview
 
-### 1. Module Hiding
+### 1. Driver Hiding
 
 Removes the driver from the `PsLoadedModuleList` by patching the doubly linked list pointers (FLINK/BLINK) to skip the driver entry.
 
