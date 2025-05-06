@@ -1,5 +1,5 @@
 #pragma once
-
+// THIS IS TAKEN FROM NIDHOGG ROOTKIT, THANK YOU!
 // Globals
 inline ULONG WindowsBuildNumber = 0;
 inline PVOID AllocatePool2 = NULL;
