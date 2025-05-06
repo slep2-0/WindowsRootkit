@@ -5,7 +5,7 @@ VisualStudioVersion = 17.13.35818.85 d17.13
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RootkitUpdatedActual", "RootkitUpdatedActual.vcxproj", "{F8E03F12-2A50-D08F-60C7-0DA4288F485F}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RootkitUserModeDispatcher", "..\RootkitUserModeDispatcher\RootkitUserModeDispatcher.vcxproj", "{54C519E7-0FFB-4404-8C57-ECC5F8FDD632}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RootkitUserModeDispatcher", "RootkitClient\RootkitUserModeDispatcher.vcxproj", "{54C519E7-0FFB-4404-8C57-ECC5F8FDD632}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
