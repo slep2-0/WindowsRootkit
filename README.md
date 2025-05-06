@@ -16,6 +16,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
    * [2. Privilege Elevation](#2-privilege-elevation)
    * [3. Process Hiding](#3-process-hiding)
    * [4. Process Protection](#4-process-protection)
+   * [5. DLL Hiding](#5-dll-hiding)
 6. [Reflective vs. Service Loading](#reflective-vs-service-loading)
 7. [Future Enhancements](#future-enhancements)
 
@@ -108,6 +109,9 @@ Sets the `BreakOnTermination` flag in the target process’s `__EPROCESS` struct
 
 * If the protected process exits or is terminated, the system will bug check with **CRITICAL\_PROCESS\_DIED**.
 
+### 5. DLL Hiding
+
+Traverses through the `PEB` structure of the process that is given, attempts to find the requested DLL, and hides it from the list.
 ---
 
 ## Reflective vs. Service Loading
