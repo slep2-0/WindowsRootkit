@@ -112,6 +112,7 @@ Sets the `BreakOnTermination` flag in the target process’s `__EPROCESS` struct
 ### 5. DLL Hiding
 
 Traverses through the `PEB` structure of the process that is given, attempts to find the requested DLL, and hides it from the list.
+
 ---
 
 ## Reflective vs. Service Loading
