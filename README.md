@@ -111,6 +111,8 @@ Sets the `BreakOnTermination` flag in the target process’s `__EPROCESS` struct
 
 * You may also unprotect a process using the menu.
 
+* You may also protect a process with Access Denied protection (termination will cause in Access Denied), and it will also protect from reading and writing to it's memory.
+
 ### 5. DLL Hiding
 
 Traverses through the `PEB` structure of the process that is given, attempts to find the requested DLL, and unlinks it from the list.
