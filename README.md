@@ -132,7 +132,7 @@ Traverses through the `PEB` structure of the process that is given, attempts to 
 
 * **Port Hiding:** Conceal network ports in TCP/IP stack tables.
 * **APC Shellcode Injection:** Inject shellcode VIA APC to processes.
-* **Callbacks:** Register callbacks to deny process and thread killing, hiding registry keys and values, and even deny file deletion.
+* **Callbacks:** Register callbacks to deny process and thread killing, hiding registry keys and values, and even deny file deletion. (PROCESS - DONE)
 * **Extended DKOM:** Modify additional kernel structures for enhanced stealth.
 
 ---
