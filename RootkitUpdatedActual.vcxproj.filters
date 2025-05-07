@@ -27,15 +27,15 @@
     <ClCompile Include="src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\functions.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\structs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\externs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Downloads\WindowsTypes.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
