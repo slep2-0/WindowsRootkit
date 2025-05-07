@@ -647,7 +647,7 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
     OB_CALLBACK_REGISTRATION reg = {
         OB_FLT_REGISTRATION_VERSION, // just use the current version
         1, // 1 is the amount of registrations we did, so far its 1.
-        RTL_CONSTANT_STRING(L"389998"), // unique code for our registration driver
+        RTL_CONSTANT_STRING(L"11222.5261"), // unique code for our registration driver
         nullptr, // registration context is null for now
         operations // our operations we want to callback
     };
