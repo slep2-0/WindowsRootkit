@@ -1,5 +1,11 @@
 #pragma once
-// THIS IS TAKEN FROM NIDHOGG ROOTKIT, THANK YOU!
+
+constexpr SIZE_T SYSTEM_PROCESS_PID = 0x4;
+constexpr SIZE_T PROCESS_TERMINATE = 0x1;
+constexpr SIZE_T PROCESS_CREATE_THREAD = 0x2;
+constexpr SIZE_T PROCESS_VM_READ = 0x10;
+constexpr SIZE_T PROCESS_VM_OPERATION = 0x8;
+
 // Globals
 inline ULONG WindowsBuildNumber = 0;
 inline PVOID AllocatePool2 = NULL;
