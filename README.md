@@ -126,6 +126,7 @@ Traverses through the `PEB` structure of the process that is given, attempts to 
 The kernel driver has been updated to have the option to message the client via a shared memory region.
 
 The client is notified via an event that the kernel driver sends.
+
 ---
 
 ## Reflective vs. Service Loading
