@@ -68,7 +68,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
 
 1. **Install & Start Driver**
   
-  **Note: Must use the service version of the driver, by uncommenting #define DRL or using the binary.**
+  **Note: To use the service version of the driver, uncomment #define DRL in `main.cpp` or use the binary `RootkitService.sys`.**
    ```powershell
    sc create RootkitDriver type= kernel binPath= "<path>\RootkitService.sys" start= system
    sc start RootkitDriver
