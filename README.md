@@ -17,8 +17,9 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
    * [3. Process Hiding](#3-process-hiding)
    * [4. Process Protection](#4-process-protection)
    * [5. DLL Hiding](#5-dll-hiding)
-6. [Reflective vs. Service Loading](#reflective-vs-service-loading)
-7. [Future Enhancements](#future-enhancements)
+6. [Messaging Capabilities](#messaging-capabilities)
+7. [Reflective vs. Service Loading](#reflective-vs-service-loading)
+8. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -117,6 +118,14 @@ Sets the `BreakOnTermination` flag in the target process’s `__EPROCESS` struct
 
 Traverses through the `PEB` structure of the process that is given, attempts to find the requested DLL, and unlinks it from the list.
 
+---
+## Messaging Capabilities
+
+**FEATURE IS ONLY AVAILABLE TO SERVICE DRIVERS.**
+
+The kernel driver has been updated to have the option to message the client via a shared memory region.
+
+The client is notified via an event that the kernel driver sends.
 ---
 
 ## Reflective vs. Service Loading
