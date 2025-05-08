@@ -1,5 +1,9 @@
-#include <iostream>
+﻿#include <iostream>
 #include <Windows.h>
+
+#define SHARED_MEM_SIZE 512
+#define SECTION_NAME L"MySharedSection"
+#define EVENT_NAME   L"MySharedEvent"
 
 namespace Rootkit {
     namespace codes {
@@ -18,6 +22,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x701, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG ProtectProcessOP =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x702, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG UnProtectProcessOP =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x703, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
@@ -39,6 +45,21 @@ namespace Rootkit {
             nullptr                      // Overlapped
         );
 
+    }
+
+    bool UnProtectProcessOP(HANDLE driver_handle, DWORD pid) {
+        Request r;
+        r.process_id = UlongToHandle(pid);
+        return DeviceIoControl(
+            driver_handle,
+            codes::ProtectProcessOP,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
     }
 
     bool ProtectProcessOP(HANDLE driver_handle, DWORD pid) {
@@ -140,6 +161,8 @@ namespace Rootkit {
         );
     }
 }
+char* g_MsgFromKernel;
+
 void showMenu() {
     int pid = GetCurrentProcessId();
     std::cout << "===== User Mode Menu =====\n";
@@ -150,6 +173,10 @@ void showMenu() {
     std::cout << "5. Hide DLL from process.\n";
     std::cout << "99. Exit\n";
     std::cout << "Current PID: " << pid << std::endl;
+    if (g_MsgFromKernel && g_MsgFromKernel[0] != '\0') {
+        // Print out the last message recorded from the kernel.
+        std::cout << "Last message from the Kernel: " << g_MsgFromKernel << std::endl;
+    }
     std::cout << "=======================\n";
     std::cout << "Enter your choice: ";
 }
@@ -186,6 +213,23 @@ int main() {
 
     std::cout << "Got a driver handle!\n";
 
+    HANDLE hSection = OpenFileMapping(FILE_MAP_READ, FALSE, L"Global\\MySharedSection");
+    if (!hSection) {
+        printf("[-] Failed to open shared memory: %lu\n", GetLastError());
+        return 1;
+    }
+
+    LPVOID pView = MapViewOfFile(hSection, FILE_MAP_READ, 0, 0, SHARED_MEM_SIZE);
+    if (!pView) {
+        printf("[-] Failed to map view: %lu\n", GetLastError());
+        return 1;
+    }
+
+    HANDLE hEvent = OpenEvent(SYNCHRONIZE, FALSE, L"Global\\MySharedEvent");
+    if (!hEvent) {
+        printf("[-] Failed to open event: %lu\n", GetLastError());
+        return 1;
+    }
     // Move all variable declarations here before the switch
     int choice;
     int pid;
@@ -205,7 +249,16 @@ int main() {
         case 1: {
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideTheDriver(driver_handle);
-            Sleep(2000);
+            std::cout << "[+] Waiting for message from kernel...\n";
+            WaitForSingleObject(hEvent, 10000);
+            if (pView && ((char*)pView)[0] != '\0') {
+                printf("[+] Message From Kernel: %s\n", (char*)pView);
+                g_MsgFromKernel = (char*)pView;
+            }
+            else {
+                printf("No message has been received from the kernel...\n");
+            }
+            Sleep(5000);
             system("cls");
             break;
         }
@@ -214,7 +267,16 @@ int main() {
             std::cin >> pid;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::ElevateProcess(driver_handle, pid);
-            Sleep(2000);
+            std::cout << "[+] Waiting for message from kernel...\n";
+            WaitForSingleObject(hEvent, 10000);
+            if (pView && ((char*)pView)[0] != '\0') {
+                printf("[+] Message From Kernel: %s\n", (char*)pView);
+                g_MsgFromKernel = (char*)pView;
+            }
+            else {
+                printf("No message has been received from the kernel...\n");
+            }
+            Sleep(5000);
             system("cls");
             break;
         }
@@ -223,55 +285,118 @@ int main() {
             std::cin >> pidHide;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideProcess(driver_handle, pidHide);
-            Sleep(2000);
+            std::cout << "[+] Waiting for message from kernel...\n";
+            WaitForSingleObject(hEvent, 10000);
+            if (pView && ((char*)pView)[0] != '\0') {
+                printf("[+] Message From Kernel: %s\n", (char*)pView);
+                g_MsgFromKernel = (char*)pView;
+            }
+            else {
+                printf("No message has been received from the kernel...\n");
+            }
+            Sleep(5000);
             system("cls");
             break;
         }
         case 4: {
-            while (enabled) {
+            if (!enabled) {
+                enabled = !enabled;
+            }
+            while (enabled) { // Use a dedicated loop for the process protection menu
                 system("cls");
-                std::cout << "===== Process Protection Menu =====\n";
-                std::cout << "1. Protect a Process.\n";
-                std::cout << "2. UnProtect a Process.\n";
-                std::cout << "3. Protect a Process without causing a BSOD. (For Explanation Input 99.)\n";
-                std::cout << "=======================\n";
+                std::cout << "=== Process Protection Menu ===\n";
+                std::cout << "1) Enable Protection (Standard)\n";
+                std::cout << "2) Disable Protection (Standard)\n";
+                std::cout << "3) Enable Protection (Kernel Callback Method) [No BSOD]\n";
+                std::cout << "    Enter '99' for a detailed explanation\n";
+                std::cout << "4) Disable Protection (Kernel Callback Method)\n";
+                std::cout << "5) Return to Main Menu\n"; // Add an option to return to the main menu
+                std::cout << "===============================\n";
                 std::cout << "Enter a choice: ";
                 std::cin >> choiceProtect;
+
                 switch (choiceProtect) {
                 case 1:
                     std::cout << "Enter a PID: ";
                     std::cin >> pidProtect;
                     std::cout << "[!] Sending Message to Driver.\n";
                     Rootkit::ProtectProcess(driver_handle, pidProtect);
-                    enabled = false;
+                    std::cout << "[+] Waiting for message from kernel...\n";
+                    WaitForSingleObject(hEvent, 10000);
+                    if (pView && ((char*)pView)[0] != '\0') {
+                        printf("[+] Message From Kernel: %s\n", (char*)pView);
+                        g_MsgFromKernel = (char*)pView;
+                    }
+                    else {
+                        printf("No message has been received from the kernel...\n");
+                    }
+                    Sleep(5000);
                     break;
                 case 2:
                     std::cout << "Enter a PID: ";
                     std::cin >> pidProtect;
                     std::cout << "[!] Sending Message to Driver.\n";
                     Rootkit::UnProtectProcess(driver_handle, pidProtect);
-                    enabled = false;
+                    std::cout << "[+] Waiting for message from kernel...\n";
+                    WaitForSingleObject(hEvent, 10000);
+                    if (pView && ((char*)pView)[0] != '\0') {
+                        printf("[+] Message From Kernel: %s\n", (char*)pView);
+                        g_MsgFromKernel = (char*)pView;
+                    }
+                    else {
+                        printf("No message has been received from the kernel...\n");
+                    }
+                    Sleep(5000);
                     break;
                 case 3:
                     std::cout << "Enter a PID: ";
                     std::cin >> pidProtect;
                     std::cout << "[!] Sending Message to Driver.\n";
                     Rootkit::ProtectProcessOP(driver_handle, pidProtect);
-                    enabled = false;
+                    std::cout << "[+] Waiting for message from kernel...\n";
+                    WaitForSingleObject(hEvent, 10000);
+                    if (pView && ((char*)pView)[0] != '\0') {
+                        printf("[+] Message From Kernel: %s\n", (char*)pView);
+                        g_MsgFromKernel = (char*)pView;
+                    }
+                    else {
+                        printf("No message has been received from the kernel...\n");
+                    }
+                    Sleep(5000);
+                    break;
+                case 4:
+                    std::cout << "Enter a PID: ";
+                    std::cin >> pidProtect;
+                    std::cout << "[!] Sending Message to Driver.\n";
+                    Rootkit::UnProtectProcessOP(driver_handle, pidProtect);
+                    std::cout << "[+] Waiting for message from kernel...\n";
+                    WaitForSingleObject(hEvent, 10000);
+                    if (pView && ((char*)pView)[0] != '\0') {
+                        printf("[+] Message From Kernel: %s\n", (char*)pView);
+                        g_MsgFromKernel = (char*)pView;
+                    }
+                    else {
+                        printf("No message has been received from the kernel...\n");
+                    }
+                    Sleep(5000);
                     break;
                 case 99:
                     system("cls");
-                    std::cout << "Protecting a process this way will cause an access denied on termination, and also will protect from viewing the memory of the process or writing to it.\n\n";
-                    std::cout << "Returning to Main Menu in 10 seconds...\n";
+                    std::cout << "The Kernel Callback method intercepts termination and memory-access attempts.\n";
+                    std::cout << "Any unauthorized terminate/read/write calls will receive ACCESS_DENIED\n";
+                    std::cout << "rather than crashing the system.\n\n";
+                    std::cout << "Returning to the process protection menu in 10 seconds...\n";
                     Sleep(10000);
+                    break;
+                case 5: // Handle returning to the main menu
                     system("cls");
+                    enabled = !enabled;
                     break;
                 default:
-                    std::cout << "Invalid Choice. Exiting Program...\n";
-                    CloseHandle(driver_handle);
-                    return 1;
+                    std::cout << "Invalid Choice. Please try again.\n";
+                    Sleep(2000);
+                    break;
                 }
-                break;
             }
             break;
         }
@@ -288,13 +413,25 @@ int main() {
             wcsncpy_s(DLLName, tempDLLName.c_str(), _TRUNCATE);
             std::wcout << L"[!] Sending Message to Driver.\n";
             Rootkit::HideDLL(driver_handle, pidDLLHide, DLLName);
-            Sleep(2000);
+            std::cout << "[+] Waiting for message from kernel...\n";
+            WaitForSingleObject(hEvent, 10000);
+            if (pView && ((char*)pView)[0] != '\0') {
+                printf("[+] Message From Kernel: %s\n", (char*)pView);
+                g_MsgFromKernel = (char*)pView;
+            }
+            else {
+                printf("No message has been received from the kernel...\n");
+            }
+            Sleep(5000);
             system("cls");
             break;
         }
         case 99: {
             std::cout << "Exiting the program, bye!\n";
             CloseHandle(driver_handle);
+            UnmapViewOfFile(pView);
+            CloseHandle(hSection);
+            CloseHandle(hEvent);
             return 0;
         }
         default: {
