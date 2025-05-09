@@ -140,7 +140,7 @@ The client is notified via an event that the kernel driver sends.
 
 ## Future Enhancements
 
-* **Port Hiding:** Conceal network ports in TCP/IP stack tables.
+* **Port Hiding:** Conceal network ports using IRP hooks.
 * **APC Shellcode Injection:** Inject shellcode VIA APC to processes.
 * **Callbacks:** Register callbacks to deny process and thread killing, hiding registry keys and values, and even deny file deletion. (PROCESS - DONE)
 * **Extended DKOM:** Modify additional kernel structures for enhanced stealth.
