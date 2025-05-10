@@ -128,12 +128,17 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Callbacks.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\MemoryHelper.cpp" />
+    <ClCompile Include="src\ProcessUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\Downloads\WindowsTypes.hpp" />
-    <ClInclude Include="src\externs.h" />
-    <ClInclude Include="src\structs.h" />
+    <ClInclude Include="src\Callbacks.hpp" />
+    <ClInclude Include="src\headers.h" />
+    <ClInclude Include="src\main.h" />
+    <ClInclude Include="src\MemoryHelper.hpp" />
+    <ClInclude Include="src\ProcessUtils.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
