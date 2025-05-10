@@ -1,4 +1,5 @@
 ﻿#include <iostream>
+#include <string>
 #include <Windows.h>
 
 #define SHARED_MEM_SIZE 512
@@ -161,7 +162,8 @@ namespace Rootkit {
         );
     }
 }
-char* g_MsgFromKernel;
+std::string g_MsgFromKernel;
+
 
 void showMenu() {
     int pid = GetCurrentProcessId();
@@ -173,7 +175,7 @@ void showMenu() {
     std::cout << "5. Hide DLL from process.\n";
     std::cout << "99. Exit\n";
     std::cout << "Current PID: " << pid << std::endl;
-    if (g_MsgFromKernel && g_MsgFromKernel[0] != '\0') {
+    if (!g_MsgFromKernel.empty() && g_MsgFromKernel[0] != '\0') {
         // Print out the last message recorded from the kernel.
         std::cout << "Last message from the Kernel: " << g_MsgFromKernel << std::endl;
     }
@@ -253,7 +255,7 @@ int main() {
             WaitForSingleObject(hEvent, 10000);
             if (pView && ((char*)pView)[0] != '\0') {
                 printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = (char*)pView;
+                g_MsgFromKernel = std::string((char*)pView);
             }
             else {
                 printf("No message has been received from the kernel...\n");
@@ -271,7 +273,7 @@ int main() {
             WaitForSingleObject(hEvent, 10000);
             if (pView && ((char*)pView)[0] != '\0') {
                 printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = (char*)pView;
+                g_MsgFromKernel = std::string((char*)pView);
             }
             else {
                 printf("No message has been received from the kernel...\n");
@@ -289,7 +291,7 @@ int main() {
             WaitForSingleObject(hEvent, 10000);
             if (pView && ((char*)pView)[0] != '\0') {
                 printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = (char*)pView;
+                g_MsgFromKernel = std::string((char*)pView);
             }
             else {
                 printf("No message has been received from the kernel...\n");
@@ -325,7 +327,7 @@ int main() {
                     WaitForSingleObject(hEvent, 10000);
                     if (pView && ((char*)pView)[0] != '\0') {
                         printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = (char*)pView;
+                        g_MsgFromKernel = std::string((char*)pView);
                     }
                     else {
                         printf("No message has been received from the kernel...\n");
@@ -341,7 +343,7 @@ int main() {
                     WaitForSingleObject(hEvent, 10000);
                     if (pView && ((char*)pView)[0] != '\0') {
                         printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = (char*)pView;
+                        g_MsgFromKernel = std::string((char*)pView);
                     }
                     else {
                         printf("No message has been received from the kernel...\n");
@@ -357,7 +359,7 @@ int main() {
                     WaitForSingleObject(hEvent, 10000);
                     if (pView && ((char*)pView)[0] != '\0') {
                         printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = (char*)pView;
+                        g_MsgFromKernel = std::string((char*)pView);;
                     }
                     else {
                         printf("No message has been received from the kernel...\n");
@@ -373,7 +375,7 @@ int main() {
                     WaitForSingleObject(hEvent, 10000);
                     if (pView && ((char*)pView)[0] != '\0') {
                         printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = (char*)pView;
+                        g_MsgFromKernel = std::string((char*)pView);
                     }
                     else {
                         printf("No message has been received from the kernel...\n");
@@ -417,7 +419,7 @@ int main() {
             WaitForSingleObject(hEvent, 10000);
             if (pView && ((char*)pView)[0] != '\0') {
                 printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = (char*)pView;
+                g_MsgFromKernel = std::string((char*)pView);
             }
             else {
                 printf("No message has been received from the kernel...\n");
