@@ -20,7 +20,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
    * [6. File Protection](#6-file-protection)
 7. [Messaging Capabilities](#messaging-capabilities)
 8. [Reflective vs. Service Loading](#reflective-vs-service-loading)
-9. [Future Enhancements](#future-enhancements)
+9. [Future Enhancements](#future-enhancements) 
 
 ---
 
