@@ -18,9 +18,9 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
    * [4. Process Protection](#4-process-protection)
    * [5. DLL Hiding](#5-dll-hiding)
    * [6. File Protection](#6-file-protection)
-6. [Messaging Capabilities](#messaging-capabilities)
-7. [Reflective vs. Service Loading](#reflective-vs-service-loading)
-8. [Future Enhancements](#future-enhancements)
+7. [Messaging Capabilities](#messaging-capabilities)
+8. [Reflective vs. Service Loading](#reflective-vs-service-loading)
+9. [Future Enhancements](#future-enhancements)
 
 ---
 
