@@ -121,7 +121,7 @@ Traverses through the `PEB` structure of the process that is given, attempts to 
 
 ### 6. File Protection
 
-Hooks the IRP_MJ_CREATE on the NTFS FileSystem driver, to deny file modification, as well deletion (basically "locks" the file).
+Hooks the `IRP_MJ_CREATE` on the NTFS FileSystem driver, to deny file modification, as well deletion (basically "locks" the file).
 
 ---
 ## Messaging Capabilities
