@@ -17,6 +17,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
    * [3. Process Hiding](#3-process-hiding)
    * [4. Process Protection](#4-process-protection)
    * [5. DLL Hiding](#5-dll-hiding)
+   * [6. File Protection](#6-file-protection)
 6. [Messaging Capabilities](#messaging-capabilities)
 7. [Reflective vs. Service Loading](#reflective-vs-service-loading)
 8. [Future Enhancements](#future-enhancements)
@@ -117,6 +118,10 @@ Sets the `BreakOnTermination` flag in the target process’s `__EPROCESS` struct
 ### 5. DLL Hiding
 
 Traverses through the `PEB` structure of the process that is given, attempts to find the requested DLL, and unlinks it from the list.
+
+### 6. File Protection
+
+Hooks the IRP_MJ_CREATE on the NTFS FileSystem driver, to deny file modification, as well deletion (basically "locks" the file).
 
 ---
 ## Messaging Capabilities
