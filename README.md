@@ -1,6 +1,6 @@
 # Windows Kernel-Mode Rootkit (slep2.0)
 
-This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides four core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
+This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides five core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
 
 ---
 
