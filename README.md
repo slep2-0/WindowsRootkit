@@ -145,7 +145,7 @@ The client is notified via an event that the kernel driver sends.
 
 ## Future Enhancements
 
-* **Port Hiding:** Conceal network ports using IRP hooks.
+* **Port Hiding:** Conceal network ports using IRP hooks. -- Hooking the NSI Driver, will only hide ports and IP's from the netstat command, wireshark uses it's own device driver (well it uses the NpCap Driver to be more precise - I will not perform hooks on it).
 * **APC Shellcode Injection:** Inject shellcode VIA APC to processes.
 * **Callbacks:** Register callbacks to deny process and thread killing, hiding registry keys and values, and even deny file deletion. (PROCESS - DONE, FILE DELETION - Done (via IRP Hooking))
 * **Extended DKOM:** Modify additional kernel structures for enhanced stealth. - Might do PspCidTable to fully hide the process.
