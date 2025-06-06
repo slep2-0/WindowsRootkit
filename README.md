@@ -137,7 +137,7 @@ The client is notified via an event that the kernel driver sends.
 ## Reflective vs. Service Loading
 
 * **Service Loading (default):** Loads driver via SCM (Service Control Manager).
-* **Reflective Loading:** Loads driver into memory without SCM.
+* **Reflective Loading:** Loads driver into memory without SCM. -- Used with BYOVD (Bring Your Own Vulnerable Driver) attacks, (The vulnerable driver MUST HAVE Kernel Memory Read/Write in order to map your kernel driver)
 
   * Enable by uncommenting `#define DRL` in `main.cpp`.
 
