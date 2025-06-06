@@ -148,7 +148,7 @@ The client is notified via an event that the kernel driver sends.
 * **Port Hiding:** Conceal network ports using IRP hooks.
 * **APC Shellcode Injection:** Inject shellcode VIA APC to processes.
 * **Callbacks:** Register callbacks to deny process and thread killing, hiding registry keys and values, and even deny file deletion. (PROCESS - DONE, FILE DELETION - Done (via IRP Hooking))
-* **Extended DKOM:** Modify additional kernel structures for enhanced stealth.
+* **Extended DKOM:** Modify additional kernel structures for enhanced stealth. - Might do PspCidTable to fully hide the process.
 
 ---
 
