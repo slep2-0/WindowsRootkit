@@ -214,7 +214,7 @@ int ProcessUtils::HideDLL(UINT32 PID, const WCHAR* DLLName) {
             pListEntry != &PEB->LoaderData->InLoadOrderModuleList;
             pListEntry = pListEntry->Flink) {
             // Get the address of the InLoadOrderLinks.
-            entry = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+            entry = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks); // What containing record will do here, is give the base address of LDR_DATA_TABLE_ENTRY to start traversing the whole of it.
             if (entry && entry->FullDllName.Length > 0) {
                 WCHAR dllNameBuffer[256];
                 // Copy the buffer of the FullDllName safely to the variable.
