@@ -18,6 +18,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
    * [4. Process Protection](#4-process-protection)
    * [5. DLL Hiding](#5-dll-hiding)
    * [6. File Protection](#6-file-protection)
+   * [7. DLL Injection](#7-dll-injection)
 7. [Messaging Capabilities](#messaging-capabilities)
 8. [Reflective vs. Service Loading](#reflective-vs-service-loading)
 9. [Future Enhancements](#future-enhancements) 
@@ -122,6 +123,10 @@ Traverses through the `PEB` structure of the process that is given, attempts to 
 ### 6. File Protection
 
 Hooks the `IRP_MJ_CREATE` on the NTFS FileSystem driver, to deny file modification, as well deletion (basically "locks" the file).
+
+### 7. DLL Injection
+
+Injects the DLL into the specified process using the NtCreateRemoteThreadEx SSDT Address + kernel32.dll LoadLibraryW
 
 ---
 ## Messaging Capabilities
