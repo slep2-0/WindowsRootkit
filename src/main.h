@@ -7,4 +7,5 @@
 #include "WindowsTypes.hpp"
 #include "ProcessUtils.h"
 #include "Callbacks.hpp"
+#include "KernelUtils.h"
 #include "FileUtils.h"

