@@ -41,7 +41,7 @@ This project implements a Windows kernel-mode rootkit compatible with Windows XP
   * On 64-bit Windows XP and later, PatchGuard may detect modifications to SSDT, DKOM, MSRs, GDT/IDT, etc., and trigger a bug check (blue screen).
   * Detection timing is nondeterministic; you may have a window of opportunity to establish persistence before a crash occurs.
   * For sustained stealth, you must patch PatchGuard and disable Driver Signature Enforcement (DSE). **This repository does *not* include KPP or DSE patches.**
-
+  * If the Windows machine is loaded with a kernel debugger attached, PatchGuard is disabled for the session by default - up until the debugger detaches.
 ---
 
 ## Build Instructions
