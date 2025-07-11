@@ -40,10 +40,20 @@ Windows XP Support is limited to an extent -- I don't think kernel callbacks wer
 
 * **Kernel Patch Protection (KPP / PatchGuard):**
 
-  * On 64-bit Windows XP and later, PatchGuard may detect modifications to SSDT, DKOM, MSRs, GDT/IDT, etc., and trigger a bug check (blue screen).
+  * On 64-bit Windows Vista and later, PatchGuard may detect modifications to SSDT, DKOM, MSRs, GDT/IDT, etc., and trigger a bug check (blue screen).
   * Detection timing is nondeterministic; you may have a window of opportunity to establish persistence before a crash occurs.
   * For sustained stealth, you must patch PatchGuard and disable Driver Signature Enforcement (DSE). **This repository does *not* include KPP or DSE patches.**
   * If the Windows machine is loaded with a kernel debugger attached, PatchGuard is disabled for the session by default - up until the debugger detaches.
+
+* **Driver Signature Enforcement (DSE):**
+
+  * Since Windows Vista, along with PatchGuard, DSE was introduced as a measure to protect against unsigned drivers.
+  * To combat this, you may use the BYOVD attack -- Bring Your Own Vulnerable Driver.
+  * This works by bringing an already trusted and signed driver, that has a major vulnerability in it (particularly Kernel Memory Read/Write)
+  * Since Windows 10 Though, a Vulnerable Driver Blocklist has been implemented, which gets updated fairly quick by the microsoft team.
+  * Still, you may turn it off and load the vulnerable signed driver to load your own unsigned kernel driver.
+  * Projects like KDMapper implement this - https://github.com/TheCruZ/kdmapper
+  * You may also disable DSE by using bcd to enable test signing - or booting with DSE Disabled in the recovery menu. (DSE - CI.dll may also be patched, again I will not be showing how, but it's pretty self-explanatory)
 ---
 
 ## Build Instructions
