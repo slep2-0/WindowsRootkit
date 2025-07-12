@@ -21,6 +21,7 @@ Windows XP Support is limited to an extent -- I don't think kernel callbacks wer
    * [5. DLL Hiding](#5-dll-hiding)
    * [6. File Protection](#6-file-protection)
    * [7. DLL Injection](#7-dll-injection)
+   * [8. Hooking](#8-hooking)
 7. [Messaging Capabilities](#messaging-capabilities)
 8. [Reflective vs. Service Loading](#reflective-vs-service-loading)
 9. [Future Enhancements](#future-enhancements) 
@@ -139,6 +140,10 @@ Hooks the `IRP_MJ_CREATE` on the NTFS FileSystem driver, to deny file modificati
 ### 7. DLL Injection
 
 Injects the DLL into the specified process using the NtCreateRemoteThreadEx SSDT Address + kernel32.dll LoadLibraryW
+
+### 8. Hooking
+
+Hooks the function supplied by the kernel to modify output and block/modify if given output matches our blocklist/intended purpose.
 
 ---
 ## Messaging Capabilities
