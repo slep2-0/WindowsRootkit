@@ -1,5 +1,9 @@
 #include "CPU.h"
 
+void doom() {
+
+}
+
 void CPU::RedirectLSTARSyscall(PVOID newFunction) {
 	__try {
 		__writemsr(MSR_LSTAR, (UINT64)newFunction);
@@ -25,3 +29,11 @@ bool CPU::BlockSyscall(UINT64 syscall) {
 	return true;
 }
 
+void CPU::ObliterateLSTAR() {
+	RedirectLSTARSyscall(doom);
+	/*
+	DbgPrint("Reached bugcheck.");
+	KeBugCheck(0xDEADBEEF);
+
+	*/
+}

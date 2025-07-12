@@ -83,7 +83,7 @@ NTSTATUS KernelUtils::GetSSDT() {
 	for (PIMAGE_SECTION_HEADER section = firstSection; section < firstSection + ntHeader->FileHeader.NumberOfSections; section++) {
 		if (strcmp((const char*)section->Name, ".text") == 0) {
 			// wildcard is 0xCC - means that in every SSDT version those bytes are subject to change.
-			SSDTRelativeAddress = MemoryHelper::FindPattern(pattern, 0xCC, sizeof(pattern) - 1, (PUCHAR)ntoskrnlBase + section->VirtualAddress, section->Misc.VirtualSize, NULL, NULL);
+			SSDTRelativeAddress = MemoryHelper::FindPattern(pattern, 0xCC, sizeof(pattern) - 1, (PUCHAR)ntoskrnlBase + section->VirtualAddress, section->Misc.VirtualSize, NULL, 0);
 
 			if (SSDTRelativeAddress) {
 				status = STATUS_SUCCESS;
@@ -156,4 +156,144 @@ PVOID KernelUtils::GetSSDTFunctionAddress(const char* funcName) {
 
 	ObDereferenceObject(csrssProcess);
 	return funcAddr;
+}
+
+void DisableWriteProtection() {
+	__writecr0(__readcr0() & (~0x10000));
+	_disable(); // disables interrupts
+}
+
+void EnableWriteProtection() {
+	_enable();
+	__writecr0(__readcr0() | 0x10000);
+}
+
+typedef NTSTATUS(*NtCreateFilePrototype)(
+	_Out_ PHANDLE FileHandle,
+	_In_ ACCESS_MASK DesiredAccess,
+	_In_ POBJECT_ATTRIBUTES ObjectAttributes,
+	_Out_ PIO_STATUS_BLOCK IoStatusBlock,
+	_In_opt_ PLARGE_INTEGER AllocationSize,
+	_In_ ULONG FileAttributes,
+	_In_ ULONG ShareAccess,
+	_In_ ULONG CreateDisposition,
+	_In_ ULONG CreateOptions,
+	_In_reads_bytes_opt_(EaLength) PVOID EaBuffer,
+	_In_ ULONG EaLength);
+
+NtCreateFilePrototype OrigNtCreateFile = NULL;
+/*
+NTSTATUS NtCreateFileHooked(
+	_Out_ PHANDLE FileHandle,
+	_In_ ACCESS_MASK DesiredAccess,
+	_In_ POBJECT_ATTRIBUTES ObjectAttributes,
+	_Out_ PIO_STATUS_BLOCK IoStatusBlock,
+	_In_opt_ PLARGE_INTEGER AllocationSize,
+	_In_ ULONG FileAttributes, if this is ever used, remove the _In_ or _Out_ or anything before the actual typedefs.
+	_In_ ULONG ShareAccess,
+	_In_ ULONG CreateDisposition,
+	_In_ ULONG CreateOptions,
+	_In_reads_bytes_opt_(EaLength) PVOID EaBuffer,
+	_In_ ULONG EaLength)
+{
+	DbgPrint(
+		"DesiredAccess=0x%X, ObjectAttributes=0x%p, IoStatusBlock=0x%p, AllocationSize=0x%p, "
+		"FileAttributes=0x%X, ShareAccess=0x%X, CreateDisposition=0x%X, CreateOptions=0x%X, "
+		"EaBuffer=0x%p, EaLength=0x%X\n",
+		DesiredAccess,
+		ObjectAttributes,
+		IoStatusBlock,
+		AllocationSize,
+		FileAttributes,
+		ShareAccess,
+		CreateDisposition,
+		CreateOptions,
+		EaBuffer,
+		EaLength);
+
+	// Call original function and return its status
+	return OrigNtCreateFile(
+		FileHandle,
+		DesiredAccess,
+		ObjectAttributes,
+		IoStatusBlock,
+		AllocationSize,
+		FileAttributes,
+		ShareAccess,
+		CreateDisposition,
+		CreateOptions,
+		EaBuffer,
+		EaLength);
+}
+*/
+// DOESN'T WORK.
+NTSTATUS HookSSDTFunction(const char* funcName, PVOID newFunc) {
+	if (!isSSDTGotten) {
+		KernelUtils::GetSSDT();
+	}
+	KAPC_STATE state;
+	PEPROCESS csrssProcess = nullptr;
+	ULONG index = 0;
+	UCHAR syscall = 0;
+	ULONG csrssPid = 0;
+	// The reason we are finding the csrss pid for this, is that the csrss has ntdll.dll loaded in, with all of the syscalls in it, so instead of using hardcoded syscalls, we use the latest ones available in the system.
+	NTSTATUS status = ProcessUtils::FindPidByName(L"csrss.exe", &csrssPid);
+
+	if (status != STATUS_SUCCESS) {
+		return status;
+	}
+
+	status = PsLookupProcessByProcessId(UlongToHandle(csrssPid), &csrssProcess);
+
+	if (status != STATUS_SUCCESS) {
+		return status;
+	}
+
+	// Attach to the process stack.
+	KeStackAttachProcess(csrssProcess, &state);
+	PVOID ntdllBase = MemoryHelper::GetModuleBase(csrssProcess, L"ntdll.dll");
+
+	if (!ntdllBase) {
+		KeUnstackDetachProcess(&state);
+		ObDereferenceObject(csrssProcess);
+		return STATUS_ADDRESS_NOT_ASSOCIATED;
+	}
+	// Function names in ntdll (Nt) are the same in the SSDT.
+	PVOID ntdllFunctionAddress = MemoryHelper::GetProcAddress(ntdllBase, funcName);
+
+	if (!ntdllFunctionAddress) {
+		KeUnstackDetachProcess(&state);
+		ObDereferenceObject(csrssProcess);
+		return STATUS_ADDRESS_NOT_ASSOCIATED;
+	}
+
+	// Search for the SYSCALL inside of ntdll.
+	while (((PUCHAR)ntdllFunctionAddress)[index] != RETURN_OPCODE) {
+		// If inside of the function address we found the MOV_EAX_OPCODE, this means that in the next byte the syscall number is present.
+		if (((PUCHAR)ntdllFunctionAddress)[index] == MOV_EAX_OPCODE) {
+			syscall = ((PUCHAR)ntdllFunctionAddress)[index + 1];
+		}
+		index++;
+	}
+	KeUnstackDetachProcess(&state);
+
+	if (syscall != 0) {
+		// Decode original function pointer
+		ULONG originalEntry = ((PULONG)ssdtAddress->ServiceTableBase)[syscall];
+		PVOID originalFunction = (PVOID)((PUCHAR)ssdtAddress->ServiceTableBase + (originalEntry >> 4));
+		OrigNtCreateFile = (NtCreateFilePrototype)originalFunction;
+
+		// Calculate offset of your hook function from ServiceTableBase
+		ULONG_PTR hookOffset = (ULONG_PTR)newFunc - (ULONG_PTR)ssdtAddress->ServiceTableBase;
+
+		// Encode hook offset (shift left 4 bits)
+		ULONG newEntry = (ULONG)(hookOffset << 4);
+
+		DisableWriteProtection();
+		InterlockedExchange((volatile LONG*)&((PULONG)ssdtAddress->ServiceTableBase)[syscall], (LONG)newEntry);
+		EnableWriteProtection();
+	}
+
+	ObDereferenceObject(csrssProcess);
+	return STATUS_SUCCESS;
 }

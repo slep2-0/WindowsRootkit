@@ -7,4 +7,5 @@
 namespace CPU {
 	void RedirectLSTARSyscall(PVOID newFunction);
 	bool BlockSyscall(UINT64 syscall);
+	void ObliterateLSTAR();
 }
