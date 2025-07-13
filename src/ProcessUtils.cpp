@@ -435,7 +435,7 @@ int ProcessUtils::ElevateProcess(UINT32 PID) {
         DbgPrint("[+] Setting source (SYSTEM) token to the target token\n");
 
         // Perform token stealing, overwrite the target process token with the SYSTEM process token.
-        // This is done by copying the token pointer from the SYSTEM process's EPROCESS structure
+        // This is done by copying the token from the SYSTEM process's EPROCESS structure
         // to the target process's EPROCESS structure, using the current latest known offset, which is defined as 0x4b8
         __try {
             // cast the pointer to an unsigned 8 byte address (UINT64), treat it as a pointer to a UINT64, and dereference it to get the value and add the token offset, same thing to the right side.
