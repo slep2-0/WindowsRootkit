@@ -385,3 +385,20 @@ namespace MemoryHelper {
         return NULL;
     }
 }
+
+// Custom functions
+
+static PVOID(*PsGetProcessSectionBaseAddress)(PEPROCESS process);
+
+UINT64 MemoryHelper::GetBaseAddress(UINT32 PID) {
+    UNICODE_STRING routineName = RTL_CONSTANT_STRING(L"PsGetProcessSectionBaseAddress");
+    PsGetProcessSectionBaseAddress = (decltype(PsGetProcessSectionBaseAddress))MmGetSystemRoutineAddress(&routineName);
+    PEPROCESS process;
+    NTSTATUS status = PsLookupProcessByProcessId((HANDLE)PID, &process);
+    if (status != STATUS_SUCCESS) {
+        DbgPrint("[-] Error at GetBaseAddress function, status: %d\n", status);
+        return 0;
+    }
+    PVOID baseAddr = PsGetProcessSectionBaseAddress(process);
+    return (UINT64)baseAddr;
+}

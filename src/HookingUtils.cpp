@@ -1,13 +1,17 @@
 ﻿#include "HookingUtils.h"
 
-static BOOLEAN(*OrgMmIsAddressValid)(PVOID) = nullptr;
+static BOOLEAN(*OrgMmIsAddressValid)(PVOID ADDRESS) = nullptr;
+static NTSTATUS(*OrgMmCopyVirtualMemory)(PEPROCESS SourceProcess, PVOID SourceAddress, PEPROCESS TargetProcess, PVOID TargetAddress, SIZE_T BufferSize, KPROCESSOR_MODE PreviousMode, PSIZE_T ReturnSize) = nullptr;
 static NTSTATUS(*OrgPsLookupProcessByProcessId)(HANDLE PID, PEPROCESS *Process) = nullptr;
-
+static NTSTATUS(*OrgZwQueryVirtualMemory)(HANDLE ProcessHandle, PVOID BaseAddressOpt, MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformationOut, SIZE_T MemoryInformationLength, PSIZE_T ReturnLengthOutOpt);
 static volatile ADDRESS_RANGE g_BlockedAddress = { 0x0, 0x0 };
+static volatile UINT32 g_PidToAddressBlock = 0;
 static volatile UINT32 g_PidToBlock = 0;
 
 static bool hasHookedMmIsAddressValid = false;
 static bool hasHookedPsLookupByProcessId = false;
+static bool hasHookedMmCopyVirtualMemory = false;
+static bool hasHookedZwQueryVirtualMemory = false;
 
 WCHAR* ExtractFileNameFully(const WCHAR* fullPath) {
     if (!fullPath) return NULL;
@@ -37,16 +41,42 @@ BOOLEAN IsAddressInRange(UINT64 address) {
 BOOLEAN HookedMmIsAddressValid(PVOID VirtualAddress) {
     UINT64 givenAddress = reinterpret_cast<UINT64>(VirtualAddress);
     if (IsAddressInRange(givenAddress)) {
-        DbgPrint("[HOOK] MmIsAddressValid called with fake address: 0x%llx | BLOCKED RANGE: 0x%llx - 0x%llx", givenAddress, g_BlockedAddress.Start, g_BlockedAddress.End);
+        DbgPrint("[HOOK] MmIsAddressValid called with address: 0x%llx | BLOCKED RANGE: 0x%llx - 0x%llx\n", givenAddress, g_BlockedAddress.Start, g_BlockedAddress.End);
         return FALSE; // Return FALSE since this address is blocked, so any driver that calls this (or even ntoskrnl) would be blocked -- I'm guessing to myself ntoskrnl doesn't call this though as microsoft themselves know it's a bad function.
     }
     return OrgMmIsAddressValid(VirtualAddress);
 }
 
+NTSTATUS HookedMmCopyVirtualMemory(PEPROCESS SourceProcess, PVOID SourceAddress, PEPROCESS TargetProcess, PVOID TargetAddress, SIZE_T BufferSize, KPROCESSOR_MODE PreviousMode, PSIZE_T ReturnSize) {
+    if (IsAddressInRange((UINT64)TargetAddress)) {
+        DbgPrint("[HOOK] MmCopyVirtualMemory called with address: 0x%llx | BLOCKED RANGE: 0x%llx - 0x%llx\n", (UINT64)TargetAddress, g_BlockedAddress.Start, g_BlockedAddress.End);
+        return STATUS_UNSUCCESSFUL;
+    }
+    return OrgMmCopyVirtualMemory(SourceProcess, SourceAddress, TargetProcess, TargetAddress, BufferSize, PreviousMode, ReturnSize);
+}
+
+NTSTATUS HookedZwQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddressOpt, MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformationOut, SIZE_T MemoryInformationLength, PSIZE_T ReturnLengthOutOpt) {
+    // since we only have a HANDLE we reference it to a PID using Ob.
+    PEPROCESS process;
+    NTSTATUS status = ObReferenceObjectByHandle(ProcessHandle, PROCESS_ALL_ACCESS, *PsProcessType, KernelMode, (PVOID*)&process, NULL);
+    
+    if (status == STATUS_SUCCESS) {
+        HANDLE PIDhandle = PsGetProcessId(process);
+        UINT32 PID = HandleToUlong(PIDhandle);
+        if (PID == g_PidToBlock) {
+            DbgPrint("[HOOK] ZwQueryVirtualMemory called with protected PID: %d | BLOCKED.\n", PID);
+            return STATUS_INVALID_PARAMETER; // ZwQueryVirtualMemory returns 5 values, first is STATUS_SUCCESS, and the other most safe one is STATUS_INVALID_PARAMETER, let's return that.
+        }
+    }
+
+    DbgPrint("[HOOK-ERROR] ObReferenceObjectByHandle failed, STATUS: %d\n", status);
+    return OrgZwQueryVirtualMemory(ProcessHandle, BaseAddressOpt, MemoryInformationClass, MemoryInformationOut, MemoryInformationLength, ReturnLengthOutOpt);
+}
+
 NTSTATUS HookedPsLookupProcessByProcessId(HANDLE PID, PEPROCESS* Process) {
     UINT32 gottenPid = HandleToUlong(PID);
     if (gottenPid == g_PidToBlock) {
-        DbgPrint("[HOOK] PsLookupProcessByProcessId called with PID: %d | BLOCKED.", gottenPid);
+        DbgPrint("[HOOK] PsLookupProcessByProcessId called with PID: %d | BLOCKED.\n", gottenPid);
         RTL_OSVERSIONINFOW osVersion;
         NTSTATUS status = RtlGetVersion(&osVersion);
         if (status != STATUS_SUCCESS) {
@@ -64,9 +94,46 @@ NTSTATUS HookedPsLookupProcessByProcessId(HANDLE PID, PEPROCESS* Process) {
     return OrgPsLookupProcessByProcessId(PID, Process);
 }
 
-NTSTATUS HookingUtils::HookMmIsAddressValid(ADDRESS_RANGE addressToBlock) {
-    DbgPrint("[+] HookMmIsAddressValid called.\n");
-    if (hasHookedMmIsAddressValid) {
+NTSTATUS HookingUtils::HookMemory(UINT32 PID) {
+    DbgPrint("[+] HookMemory called.\n");
+    ADDRESS_RANGE addressToBlock;
+    MEMORY_BASIC_INFORMATION memInfo;
+    CLIENT_ID cid;
+    cid.UniqueProcess = UlongToHandle(PID);
+    cid.UniqueThread = NULL;
+    HANDLE hProcess;
+    OBJECT_ATTRIBUTES objAttr;
+    InitializeObjectAttributes(&objAttr, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
+    NTSTATUS status = ZwOpenProcess(&hProcess, PROCESS_ALL_ACCESS, &objAttr, &cid);
+
+    if (status != STATUS_SUCCESS || !hProcess) {
+        DbgPrint("[-] [HOOK-ERROR] ZwOpenProcess returned %d\n", status);
+        return status;
+    }
+    DbgPrint("[+] Got a process handle for PID: %d\n", PID);
+
+    // Get the address range of the current process.
+    status = ZwQueryVirtualMemory(hProcess, NULL, MemoryBasicInformation, &memInfo, sizeof(memInfo), NULL);
+
+    if (status != STATUS_SUCCESS) {
+        DbgPrint("[-] [HOOK-ERROR] | ZwQueryVirtualMemory returned %d\n", status);
+        return status;
+    }
+
+    UINT64 baseAddr = MemoryHelper::GetBaseAddress(PID);
+
+    if (!baseAddr || baseAddr == 0) {
+        DbgPrint("[-] BaseAddress is 0, returning from HookMemory function\n");
+        return STATUS_INVALID_BASE;
+    }
+
+    SIZE_T regionSize = memInfo.RegionSize;
+    UINT64 endAddr = baseAddr + regionSize;
+
+    addressToBlock.Start = baseAddr;
+    addressToBlock.End = endAddr;
+
+    if (hasHookedMmIsAddressValid && hasHookedMmCopyVirtualMemory) {
         //InterlockedExchange64((volatile LONG64*)&g_BlockedAddress, addressToBlock);
         SetRange(addressToBlock.Start, addressToBlock.End);
         return STATUS_SUCCESS;
@@ -78,15 +145,33 @@ NTSTATUS HookingUtils::HookMmIsAddressValid(ADDRESS_RANGE addressToBlock) {
         DbgPrint("[-] STATUS_INVALID_ADDRESS returning, OrgMmIsAddressValid is not valid.\n");
         return STATUS_INVALID_ADDRESS;
     }
+    UNICODE_STRING routineVirtualMem = RTL_CONSTANT_STRING(L"MmCopyVirtualMemory");
+    OrgMmCopyVirtualMemory = (decltype(OrgMmCopyVirtualMemory))MmGetSystemRoutineAddress(&routineVirtualMem);
+    if (!OrgMmCopyVirtualMemory) {
+        DbgPrint("[-] STATUS_INVALID_ADDRESS returning, OrgMmCopyVirtualMemory is not valid\n");
+        return STATUS_INVALID_ADDRESS;
+    }
+    UNICODE_STRING routineZwQueryVirtualMem = RTL_CONSTANT_STRING(L"ZwQueryVirtualMemory");
+    OrgZwQueryVirtualMemory = (decltype(OrgZwQueryVirtualMemory))MmGetSystemRoutineAddress(&routineZwQueryVirtualMem);
+    if (!OrgZwQueryVirtualMemory) {
+        DbgPrint("[-] STATUS_INVALID_ADDRESS returning, OrgZwQueryVirtualMemory is not valid\n");
+        return STATUS_INVALID_ADDRESS;
+    }
     DetourTransactionBegin();
     DetourUpdateThread(ZwCurrentThread());
     DetourAttach((void**)&OrgMmIsAddressValid, HookedMmIsAddressValid);
+    DetourAttach((void**)&OrgMmCopyVirtualMemory, HookedMmCopyVirtualMemory);
+    DetourAttach((void**)&OrgZwQueryVirtualMemory, HookedZwQueryVirtualMemory);
     DetourTransactionCommit();
     DbgPrint("[+] Detours ended - MmIsAddressValid\n");
+    DbgPrint("[+] Detours ended - MmCopyVirtualMemory\n");
+    DbgPrint("[+] Detours ended - ZwQueryVirtualMemory\n");
     //InterlockedExchange64((volatile LONG64*)&g_BlockedAddress, addressToBlock);
     SetRange(addressToBlock.Start, addressToBlock.End);
+    g_PidToAddressBlock = PID;
     hasHookedMmIsAddressValid = true;
-    DbgPrint("[+] Finished with hooking MmIsAddressValid\n");
+    hasHookedMmCopyVirtualMemory = true;
+    DbgPrint("[+] Finished with hooking memory functions for process.\n");
     return STATUS_SUCCESS;
 }
 
@@ -114,11 +199,22 @@ NTSTATUS HookingUtils::HookPsLookupProcessByProcessId(UINT32 PidToBlock) {
 }
 
 NTSTATUS HookingUtils::DeleteAllHooks() {
+    DbgPrint("[+] DeleteAllHooks function called\n");
     DetourTransactionBegin();
     DetourUpdateThread(ZwCurrentThread());
     if (hasHookedMmIsAddressValid) {
         DetourDetach((void**)&OrgMmIsAddressValid, HookedMmIsAddressValid);
     }
+    if (hasHookedMmCopyVirtualMemory) {
+        DetourDetach((void**)&OrgMmCopyVirtualMemory, HookedMmCopyVirtualMemory);
+    }
+    if (hasHookedPsLookupByProcessId) {
+        DetourDetach((void**)&OrgPsLookupProcessByProcessId, HookedPsLookupProcessByProcessId);
+    }
+    if (hasHookedZwQueryVirtualMemory) {
+        DetourDetach((void**)&OrgZwQueryVirtualMemory, HookedZwQueryVirtualMemory);
+    }
     DetourTransactionCommit();
+    DbgPrint("[+] Hooks successfully deleted.\n");
     return STATUS_SUCCESS;
 }

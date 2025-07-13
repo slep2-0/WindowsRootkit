@@ -7,7 +7,7 @@ typedef struct _ADDRESS_RANGE {
 } ADDRESS_RANGE;
 
 namespace HookingUtils {
-	NTSTATUS HookMmIsAddressValid(ADDRESS_RANGE addressToBlock);
+	NTSTATUS HookMemory(UINT32 PID);
     NTSTATUS HookPsLookupProcessByProcessId(UINT32 PidToBlock);
     NTSTATUS DeleteAllHooks();
 } // namespace HookingUtils

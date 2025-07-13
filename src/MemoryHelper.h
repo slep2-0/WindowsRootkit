@@ -40,11 +40,11 @@ namespace MemoryHelper {
 	VOID MSGClient(const char* MSG);
 	NTSTATUS SetupSharedMemory();
 	void CleanupSharedMemory();
+	UINT64 GetBaseAddress(UINT32 PID);
 	PVOID GetModuleBase(PEPROCESS process, const WCHAR* moduleName);
 	PVOID GetProcAddress(PVOID moduleBase, const CHAR* functionName);
 	// taken from nidhogg at this point, im tired af, its 3am.
 	// just changed its casting to ULONG since it gives errors.
-	// its pretty simple, just address checking and then MmCopyVirtualMemory
 	NTSTATUS KeWriteProcessMemory(PVOID sourceDataAddress, PEPROCESS TargetProcess, PVOID targetAddress, SIZE_T dataSize, MODE mode, bool alignAddr);
 	template <typename PointerType>
 	PointerType AllocateMemory(size_t size, bool paged = true, bool forceDeprecatedAlloc = false) {

