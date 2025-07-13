@@ -149,6 +149,7 @@ Injects the DLL into the specified process using the NtCreateRemoteThreadEx SSDT
 Hooks the function supplied by the kernel to modify output and block/modify if given output matches our blocklist/intended purpose.
 
 Full Virtual Memory protection for process.
+
 Semi Protection for getting the process EPROCESS - HideProcess is better at this, this hook just blocks the function but manual parsing is also doable and not hard.
 
 ---
