@@ -86,6 +86,7 @@ Windows XP Support is limited to an extent -- I don't think kernel callbacks wer
   
   **Note: To use the service version of the driver, comment #define DRL in `main.cpp` or use the binary `RootkitService.sys`.**
    ```powershell
+   # If DSE is enabled and you somehow register the driver and at system start, windows will fail to boot, if so please remove the .sys binary from where it was placed.
    sc create RootkitDriver type= kernel binPath= "<path>\RootkitService.sys" start= system
    sc start RootkitDriver
    ```
