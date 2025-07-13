@@ -1,5 +1,8 @@
 # Windows Kernel-Mode Rootkit (slep2.0)
 
+![UNSTABLE](https://img.shields.io/badge/Status-UNSTABLE-yellow?style=for-the-badge)
+> ⚠️ **Hooking Is Currently Unstable, use is not advisory.**
+
 This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides five core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
 
 Windows XP Support is limited to an extent -- I don't think kernel callbacks were a thing, I'm sure the process elevation and process hiding works though. - Kernel structures change with every update, especially major windows updates, like XP -> 7 -> 10 -> 11. (All though 11 is closely resembling 10 as technically its the same kernel)
