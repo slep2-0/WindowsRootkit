@@ -79,24 +79,6 @@ NTSTATUS HookedZwQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddressOpt, 
     return OrgZwQueryVirtualMemory(ProcessHandle, BaseAddressOpt, MemoryInformationClass, MemoryInformationOut, MemoryInformationLength, ReturnLengthOutOpt);
 }
 
-// technically only this has to be hooked and not also ZwQueryVirtualMemory as the Zw version just handles the transition, at the end it also arrives at the Nt version, but who cares.
-NTSTATUS HookedNtQueryVirtualMemory(HANDLE ProcessHandle, PVOID BaseAddressOpt, MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformationOut, SIZE_T MemoryInformationLength, PSIZE_T ReturnLengthOutOpt) {
-    // since we only have a HANDLE we reference it to a PID using Ob.
-    PEPROCESS process;
-    NTSTATUS status = ObReferenceObjectByHandle(ProcessHandle, PROCESS_ALL_ACCESS, *PsProcessType, KernelMode, (PVOID*)&process, NULL);
-
-    if (status == STATUS_SUCCESS) {
-        HANDLE PIDhandle = PsGetProcessId(process);
-        UINT32 PID = HandleToUlong(PIDhandle);
-        if (PID == g_PidToBlock) {
-            DbgPrint("[HOOK] NtQueryVirtualMemory called with protected PID: %d | BLOCKED.\n", PID);
-            return STATUS_INVALID_PARAMETER; // ZwQueryVirtualMemory returns 5 values, first is STATUS_SUCCESS, and the other most safe one is STATUS_INVALID_PARAMETER, let's return that.
-        }
-    }
-    DbgPrint("[HOOK-ERROR] HookedNtQueryVirtualMemory:  ObReferenceObjectByHandle failed, STATUS: %d\n", status);
-    return OrgZwQueryVirtualMemory(ProcessHandle, BaseAddressOpt, MemoryInformationClass, MemoryInformationOut, MemoryInformationLength, ReturnLengthOutOpt);
-}
-
 NTSTATUS HookedZwProtectVirtualMemory(HANDLE ProcessHandle, PVOID* BaseAddress, SIZE_T* NumberOfBytesToProtect, ULONG NewAccessProtection, PULONG OldAccessProtection) {
     //remember this is a pointer to a pointer, so we dereference to get the ACTUAL base address.
     UINT64 givenAddress = reinterpret_cast<UINT64>(*BaseAddress);
@@ -223,7 +205,6 @@ NTSTATUS HookingUtils::HookMemory(UINT32 PID) {
     DetourAttach((void**)&OrgMmIsAddressValid, HookedMmIsAddressValid);
     DetourAttach((void**)&OrgMmCopyVirtualMemory, HookedMmCopyVirtualMemory);
     DetourAttach((void**)&OrgZwQueryVirtualMemory, HookedZwQueryVirtualMemory);
-    DetourAttach((void**)&OrgNtQueryVirtualMemory, HookedNtQueryVirtualMemory);
     DetourAttach((void**)&OrgZwProtectVirtualMemory, HookedZwProtectVirtualMemory);
     DetourAttach((void**)&OrgNtAllocateVirtualMemory, HookedNtAllocateVirtualMemory);
     DetourTransactionCommit();
@@ -279,9 +260,6 @@ NTSTATUS HookingUtils::DeleteAllHooks() {
     }
     if (hasHookedZwQueryVirtualMemory) {
         DetourDetach((void**)&OrgZwQueryVirtualMemory, HookedZwQueryVirtualMemory);
-    }
-    if (hasHookedZwQueryVirtualMemory) {
-        DetourDetach((void**)&OrgNtQueryVirtualMemory, HookedNtQueryVirtualMemory);
     }
     if (hasHookedZwProtectVirtualMemory) {
         DetourDetach((void**)&OrgZwProtectVirtualMemory, HookedZwProtectVirtualMemory);
