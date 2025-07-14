@@ -42,7 +42,7 @@ void SetRange(UINT64 start, UINT64 end) {
 }
 
 BOOLEAN IsAddressInRange(UINT64 address) {
-    return (address >= g_BlockedAddress.Start) && (address < g_BlockedAddress.End);
+    return (address >= g_BlockedAddress.Start) && (address < g_BlockedAddress.End); // mem addresses exclude the end.
 }
 
 BOOLEAN HookedMmIsAddressValid(PVOID VirtualAddress) {
