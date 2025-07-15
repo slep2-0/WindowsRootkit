@@ -119,6 +119,8 @@ namespace MemoryHelper {
         }
     }
 
+    // nidhogg functions from down here up until additional custom functions made by me.
+    // comments have been added by me to assist understanding nidhogg's code.
 
     PVOID GetModuleBase(PEPROCESS process, const WCHAR* moduleName) {
         // this works by getting the process PEB, then iterating over all DLL's until we find moduleName, compare with our dll name, and if it matches get it's base.
@@ -276,28 +278,7 @@ namespace MemoryHelper {
 
         return status;
     }
-    /*
-    template <typename PointerType>
-    PointerType AllocateMemory(size_t size, bool paged, bool forceDeprecatedAlloc) {
-        PVOID allocatedMem = NULL;
 
-        if (AllocatePool2 && WindowsBuildNumber >= WIN_2004 && !forceDeprecatedAlloc) {
-            allocatedMem = paged ? ((tExAllocatePool2)AllocatePool2)(POOL_FLAG_PAGED, size, DRIVER_TAG) :
-                ((tExAllocatePool2)AllocatePool2)(POOL_FLAG_NON_PAGED, size, DRIVER_TAG);
-        }
-        else {
-#pragma warning( push )
-#pragma warning( disable : 4996)
-            allocatedMem = paged ? ExAllocatePoolWithTag(PagedPool, size, DRIVER_TAG) :
-                ExAllocatePoolWithTag(NonPagedPool, size, DRIVER_TAG);
-#pragma warning( pop )
-        }
-
-        if (allocatedMem)
-            RtlSecureZeroMemory(allocatedMem, size);
-        return reinterpret_cast<PointerType>(allocatedMem);
-    }
-    */
     NTSTATUS ProbeAddress(PVOID address, SIZE_T len, ULONG alignment, NTSTATUS failureCode) {
         NTSTATUS status = STATUS_SUCCESS;
 
@@ -401,4 +382,23 @@ UINT64 MemoryHelper::GetBaseAddress(UINT32 PID) {
     }
     PVOID baseAddr = PsGetProcessSectionBaseAddress(process);
     return (UINT64)baseAddr;
+}
+
+// the psloadedmodulelist is exported since ntoskrnl version of windows 10+.
+UINT64 MemoryHelper::GetKernelBase() {
+    //first
+    PLIST_ENTRY head = &PsLoadedModuleList->InLoadOrderLinks;
+    //second
+    PLIST_ENTRY current = head->Flink;
+
+    while (current != head) {
+        //iterate over all of the list until we find kernel base (it should be the first one, but in case it is not, we will end up in it anyway.
+        PKLDR_DATA_TABLE_ENTRY entry = CONTAINING_RECORD(current, KLDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (_wcsicmp(entry->BaseDllName.Buffer, L"ntoskrnl.exe") == 0) {
+            // this is ntoskrnl
+            return (UINT64)entry->DllBase;
+        }
+        current = current->Flink;
+    }
+    return 0;
 }

@@ -1,5 +1,6 @@
 ﻿#include "HookingUtils.h"
 
+// forward declarations to obtain from ntoskrnl
 static BOOLEAN(*OrgMmIsAddressValid)(PVOID ADDRESS) = nullptr;
 static NTSTATUS(*OrgMmCopyVirtualMemory)(PEPROCESS SourceProcess, PVOID SourceAddress, PEPROCESS TargetProcess, PVOID TargetAddress, SIZE_T BufferSize, KPROCESSOR_MODE PreviousMode, PSIZE_T ReturnSize) = nullptr;
 static NTSTATUS(*OrgPsLookupProcessByProcessId)(HANDLE PID, PEPROCESS *Process) = nullptr;
@@ -7,10 +8,13 @@ static NTSTATUS(*OrgZwQueryVirtualMemory)(HANDLE ProcessHandle, PVOID BaseAddres
 static NTSTATUS(*OrgNtQueryVirtualMemory)(HANDLE ProcessHandle, PVOID BaseAddress, MEMORY_INFORMATION_CLASS MemoryInformationClass, PVOID MemoryInformation, SIZE_T MemoryInformationLength, PSIZE_T ReturnLength);
 static NTSTATUS(*OrgZwProtectVirtualMemory)(HANDLE ProcessHandle, PVOID* BaseAddress, SIZE_T* NumberOfBytesToProtect, ULONG NewAccessProtection, PULONG OldAccessProtection);
 static NTSTATUS(*OrgNtAllocateVirtualMemory)(HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits, PSIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
+
+// volatile (compiler wont perform optimizations) variables, to store addresses and pids.
 static volatile ADDRESS_RANGE g_BlockedAddress = { 0x0, 0x0 };
 static volatile UINT32 g_PidToAddressBlock = 0;
 static volatile UINT32 g_PidToBlock = 0;
 
+// boolean to check for detaching && if hooked.
 static bool hasHookedMmIsAddressValid = false;
 static bool hasHookedPsLookupByProcessId = false;
 static bool hasHookedMmCopyVirtualMemory = false;
@@ -20,29 +24,14 @@ static bool hasHookedZwProtectVirtualMemory = false;
 static bool hasHookedNtAllocateVirtualMemory = false;
 static bool hasGloballyHooked = false;
 
-WCHAR* ExtractFileNameFully(const WCHAR* fullPath) {
-    if (!fullPath) return NULL;
-
-    const WCHAR* lastSlash = fullPath;
-    const WCHAR* ptr = fullPath;
-
-    while (*ptr) {
-        if (*ptr == L'\\' || *ptr == L'/') {
-            lastSlash = ptr + 1;
-        }
-        ++ptr;
-    }
-
-    return (WCHAR*)lastSlash;
-}
-
 void SetRange(UINT64 start, UINT64 end) {
+    // note that the change is not fully atomic, its 2 atomic operations.
     InterlockedExchange64((volatile LONG64*)&g_BlockedAddress.Start, start);
     InterlockedExchange64((volatile LONG64*)&g_BlockedAddress.End, end);
 }
 
 BOOLEAN IsAddressInRange(UINT64 address) {
-    return (address >= g_BlockedAddress.Start) && (address < g_BlockedAddress.End); // mem addresses exclude the end.
+    return (address >= g_BlockedAddress.Start) && (address < g_BlockedAddress.End);
 }
 
 BOOLEAN HookedMmIsAddressValid(PVOID VirtualAddress) {
@@ -105,7 +94,7 @@ NTSTATUS HookedPsLookupProcessByProcessId(HANDLE PID, PEPROCESS* Process) {
         RTL_OSVERSIONINFOW osVersion;
         NTSTATUS status = RtlGetVersion(&osVersion);
         if (status != STATUS_SUCCESS) {
-            return STATUS_INVALID_CID; // Vista+
+            return STATUS_INVALID_CID; // Vista+ default
         }
         ULONG build = osVersion.dwBuildNumber;
         if (build < 6000) {

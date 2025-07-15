@@ -41,6 +41,7 @@ namespace MemoryHelper {
 	NTSTATUS SetupSharedMemory();
 	void CleanupSharedMemory();
 	UINT64 GetBaseAddress(UINT32 PID);
+	UINT64 GetKernelBase();
 	PVOID GetModuleBase(PEPROCESS process, const WCHAR* moduleName);
 	PVOID GetProcAddress(PVOID moduleBase, const CHAR* functionName);
 	// taken from nidhogg at this point, im tired af, its 3am.

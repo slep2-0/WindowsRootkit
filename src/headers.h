@@ -9,7 +9,10 @@
 #define THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER 0x00000004
 
 // Driver-specific tag
-#define DRIVER_TAG 'tooR'
+#ifdef DRIVER_TAG
+#undef DRIVER_TAG
+#endif
+#define DRIVER_TAG 'pelS'
 
 // Custom status codes (no trailing semicolon)
 #define STATUS_INVALID_GIVEN_ADDRESS 0x00069420
@@ -17,6 +20,7 @@
 
 // Tell Detours this is kernel mode
 #define DETOURS_KERNEL
+
 // Core WDK headers (must come before any PE/Detours headers)
 #include <ntifs.h>
 #include <ntimage.h>    // IMAGE_* definitions
@@ -27,8 +31,7 @@
 // Detours kernel-mode library
 #include "../../includes/detours.h"
 
-// Project-specific helpers (ensure these guard PE struct definitions internally)
-
+// Project Headers.
 #include "WindowsTypes.hpp"
 #include "MemoryHelper.h"
 #include "KernelUtils.h"
