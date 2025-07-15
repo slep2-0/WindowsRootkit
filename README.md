@@ -1,6 +1,9 @@
+# WARNING: This is the DEVELOPMENT branch of the repository, I will try to push new updates here daily, basically stuff I expriment with, and if it's a stable new feature, it will be merged to the `master` branch.
+```Features here may be unstable - use at your own risk.```
+
 # Windows Kernel-Mode Rootkit (slep2.0)
 
-![STABLE](https://img.shields.io/badge/Status-STABLE-darkgreen?style=for-the-badge)
+![STABLE]([https://img.shields.io/badge/Status-STABLE-darkgreen?style=for-the-badge](https://img.shields.io/badge/Status-DEVELOPMENT-yellow?style=for-the-badge))
 
 This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides five core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
 
