@@ -150,7 +150,7 @@ Hooks the function supplied by the kernel to modify output and block/modify if g
 
 Full Virtual Memory protection for process.
 
-Semi Protection for getting the process EPROCESS - HideProcess is better at this, this hook just blocks the function but manual parsing is also doable and not hard.
+Semi Protection for getting the process EPROCESS - HideProcess is better at this, this hook just blocks the function but manual parsing is also doable and not hard. -- NOTE: HideProcess DOES NOT hide it's EPROCESS (it does from the list entry, but PsLookupProcessByProcessId works by looking at the PspCidTable, and I have NOT implemented hiding from there, not at this moment)
 
 ---
 ## Messaging Capabilities
