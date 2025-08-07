@@ -79,6 +79,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -101,6 +102,8 @@
       <EntryPointSymbol>DriverEntry</EntryPointSymbol>
       <TreatLinkerWarningAsErrors>true</TreatLinkerWarningAsErrors>
       <AdditionalOptions>/integritycheck %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>Detours.StaticLibraryForDriver.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\matanel\Desktop\WindowsRootkit-master\libs;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -109,7 +112,16 @@
     </DriverSign>
     <ClCompile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalIncludeDirectories>C:\Users\matanel\Desktop\WindowsRootkit-master\includes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/FS /integritycheck %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
+    <Link>
+      <TreatLinkerWarningAsErrors>true</TreatLinkerWarningAsErrors>
+      <AdditionalDependencies>Detours.StaticLibraryForDriver.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\matanel\Desktop\WindowsRootkit-master\libs;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <DriverSign>
@@ -129,16 +141,25 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Callbacks.cpp" />
+    <ClCompile Include="src\CPU.cpp" />
+    <ClCompile Include="src\FileUtils.cpp" />
+    <ClCompile Include="src\HookingUtils.cpp" />
+    <ClCompile Include="src\KernelUtils.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\MemoryHelper.cpp" />
     <ClCompile Include="src\ProcessUtils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Callbacks.hpp" />
+    <ClInclude Include="src\CPU.h" />
+    <ClInclude Include="src\FileUtils.h" />
     <ClInclude Include="src\headers.h" />
+    <ClInclude Include="src\HookingUtils.h" />
+    <ClInclude Include="src\KernelUtils.h" />
     <ClInclude Include="src\main.h" />
-    <ClInclude Include="src\MemoryHelper.hpp" />
-    <ClInclude Include="src\ProcessUtils.hpp" />
+    <ClInclude Include="src\MemoryHelper.h" />
+    <ClInclude Include="src\ProcessUtils.h" />
+    <ClInclude Include="src\WindowsTypes.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

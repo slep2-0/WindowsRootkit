@@ -36,12 +36,24 @@
     <ClCompile Include="src\ProcessUtils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\FileUtils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CPU.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\KernelUtils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\HookingUtils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\headers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\MemoryHelper.hpp">
+    <ClInclude Include="src\MemoryHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\main.h">
@@ -50,7 +62,22 @@
     <ClInclude Include="src\Callbacks.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\ProcessUtils.hpp">
+    <ClInclude Include="src\ProcessUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\FileUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\CPU.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\KernelUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\HookingUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\WindowsTypes.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
