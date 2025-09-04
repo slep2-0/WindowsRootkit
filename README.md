@@ -2,7 +2,7 @@
 
 ![STABLE](https://img.shields.io/badge/Status-STABLE-darkgreen?style=for-the-badge)
 
-This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides five core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
+This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
 
 Windows XP Support is limited to an extent -- I don't think kernel callbacks were a thing, I'm sure the process elevation and process hiding works though. - Kernel structures change with every update, especially major windows updates, like XP -> 7 -> 10 -> 11. (All though 11 is closely resembling 10 as technically its the same kernel)
 
