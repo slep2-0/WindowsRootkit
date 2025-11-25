@@ -2,7 +2,7 @@
 
 ![STABLE](https://img.shields.io/badge/Status-STABLE-darkgreen?style=for-the-badge)
 
-**Project is not currently updated, as I keep my focus on my operating system currently, but you are still welcome to create issues, they will be responded to**
+**Project is not currently updated, as I keep my focus on [my operating system](https://github.com/slep2-0/MyOS) currently, but you are still welcome to create issues, they will be responded to**
 
 This project implements a Windows kernel-mode rootkit compatible with Windows XP, 7, 10, and 11. It provides core features for process and driver manipulation. Use this only in controlled, ethical penetration-testing environments (e.g., virtual machines).
 
